@@ -12,6 +12,29 @@ Dự án này được tạo bởi [Khiêm Đoàn](https://github.com/khiemdoan)
 | :------------: | :----------: |
 | <table><tr><td>Date (Ngày)</td><td>11-07-2026</td></tr><tr><td>Special (Giải đặc biệt)</td><td>09401</td></tr><tr><td>First (Giải nhất)</td><td>36061</td></tr><tr><td>Second (Giải nhì)</td><td>77252, 60057</td></tr><tr><td rowspan="2">Third (Giải ba)</td><td>51690, 28065, 93903</td></tr><tr><td>75131, 65832, 12023</td></tr><tr><td>Fourth (Giải tư)</td><td>3626, 1683, 2414, 9774</td></tr><tr><td rowspan="2">Fifth (Giải năm)</td><td>9198, 1500, 3618</td></tr><tr><td>8389, 9640, 0250</td></tr><tr><td>Sixth (Giải sáu)</td><td>425, 731, 475</td></tr><tr><td>Seventh (Giải bảy)</td><td>06, 26, 73, 72</td></tr></table> | <table><tr><td>First (Đầu)</td><td>Last (Đuôi)</td></tr><tr><td>0</td><td>0, 1, 3, 6</td></tr><tr><td>1</td><td>4, 8</td></tr><tr><td>2</td><td>3, 5, 6, 6</td></tr><tr><td>3</td><td>1, 1, 2</td></tr><tr><td>4</td><td>0</td></tr><tr><td>5</td><td>0, 2, 7</td></tr><tr><td>6</td><td>1, 5</td></tr><tr><td>7</td><td>2, 3, 4, 5</td></tr><tr><td>8</td><td>3, 9</td></tr><tr><td>9</td><td>0, 8</td></tr></table> |
 
+## Ứng dụng XSMN
+
+Repository có thêm ứng dụng web local cho xổ số miền Nam với các chức năng:
+
+- Thống kê tần suất và tỷ lệ xuất hiện của đuôi 2/3 số theo đài, thời gian và phạm vi giải.
+- Xem lịch mở thưởng trong tuần và toàn bộ kết quả của từng kỳ/đài.
+- Dò vé 6 số, cộng đủ các giải trùng gồm giải thường, phụ đặc biệt và khuyến khích.
+- Xếp hạng dàn 2 số và sinh dãy 6 số tham khảo cho kỳ kế tiếp bằng mô hình thống kê minh bạch.
+- Tab **Vietlott Power 6/55**: cập nhật kết quả Vietlott, thống kê tần suất 01-55, xem đầy đủ từng kỳ, dò bộ 6 số theo Jackpot 1/2 và các giải cố định, lịch quay Thứ 3/5/7, và sinh bộ số tham khảo.
+
+> Dự đoán chỉ phục vụ tham khảo/thử nghiệm. Xổ số là quá trình ngẫu nhiên; tần suất lịch sử không bảo đảm kết quả tương lai.
+
+### Chạy nhanh trên PowerShell
+
+```powershell
+uv sync --frozen --no-dev --no-install-project
+uv run src/fetch_xsmn.py --days 365
+uv run src/fetch_vietlott_power655.py --limit 8
+uv run streamlit run src/xsmn_app.py
+```
+
+Mở `http://localhost:8501` trong trình duyệt. Dữ liệu XSMN được lưu local tại `data/xsmn.sqlite3`; dữ liệu Vietlott Power 6/55 được lưu tại `data/vietlott_power655.sqlite3`; cả hai đều không được commit. Xem thiết kế, công thức và lệnh kiểm thử trong [docs/xsmn-app.md](docs/xsmn-app.md) và [docs/vietlott-power655-app.md](docs/vietlott-power655-app.md).
+
 ## Data (Dữ liệu)
 
 |          | CSV | JSON | Parquet |

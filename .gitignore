@@ -129,3 +129,9 @@ dmypy.json
 .pyre/
 
 .DS_Store
+
+# Local XSMN application data and isolated uv runtime
+data/xsmn.sqlite3*
+data/vietlott_power655.sqlite3*
+.uv-cache/
+.uv-python/

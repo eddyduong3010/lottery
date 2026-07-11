@@ -12,6 +12,29 @@ Dự án này được tạo bởi [Khiêm Đoàn](https://github.com/khiemdoan)
 | :------------: | :----------: |
 | <table><tr><td>Date (Ngày)</td><td>{{ date.strftime('%d-%m-%Y') }}</td></tr><tr><td>Special (Giải đặc biệt)</td><td>{{ "{:05}".format(special) }}</td></tr><tr><td>First (Giải nhất)</td><td>{{ "{:05}".format(prize1) }}</td></tr><tr><td>Second (Giải nhì)</td><td>{{ "{:05}".format(prize2_1) }}, {{ "{:05}".format(prize2_2) }}</td></tr><tr><td rowspan="2">Third (Giải ba)</td><td>{{ "{:05}".format(prize3_1) }}, {{ "{:05}".format(prize3_2) }}, {{ "{:05}".format(prize3_3) }}</td></tr><tr><td>{{ "{:05}".format(prize3_4) }}, {{ "{:05}".format(prize3_5) }}, {{ "{:05}".format(prize3_6) }}</td></tr><tr><td>Fourth (Giải tư)</td><td>{{ "{:04}".format(prize4_1) }}, {{ "{:04}".format(prize4_2) }}, {{ "{:04}".format(prize4_3) }}, {{ "{:04}".format(prize4_4) }}</td></tr><tr><td rowspan="2">Fifth (Giải năm)</td><td>{{ "{:04}".format(prize5_1) }}, {{ "{:04}".format(prize5_2) }}, {{ "{:04}".format(prize5_3) }}</td></tr><tr><td>{{ "{:04}".format(prize5_4) }}, {{ "{:04}".format(prize5_5) }}, {{ "{:04}".format(prize5_6) }}</td></tr><tr><td>Sixth (Giải sáu)</td><td>{{ "{:03}".format(prize6_1) }}, {{ "{:03}".format(prize6_2) }}, {{ "{:03}".format(prize6_3) }}</td></tr><tr><td>Seventh (Giải bảy)</td><td>{{ "{:02}".format(prize7_1) }}, {{ "{:02}".format(prize7_2) }}, {{ "{:02}".format(prize7_3) }}, {{ "{:02}".format(prize7_4) }}</td></tr></table> | <table><tr><td>First (Đầu)</td><td>Last (Đuôi)</td></tr>{%- for result in loto_result %}<tr><td>{{ loop.index0 }}</td><td>{{ result }}</td></tr>{%- endfor %}</table> |
 
+## Ứng dụng XSMN
+
+Repository có thêm ứng dụng web local cho xổ số miền Nam với các chức năng:
+
+- Thống kê tần suất và tỷ lệ xuất hiện của đuôi 2/3 số theo đài, thời gian và phạm vi giải.
+- Xem lịch mở thưởng trong tuần và toàn bộ kết quả của từng kỳ/đài.
+- Dò vé 6 số, cộng đủ các giải trùng gồm giải thường, phụ đặc biệt và khuyến khích.
+- Xếp hạng dàn 2 số và sinh dãy 6 số tham khảo cho kỳ kế tiếp bằng mô hình thống kê minh bạch.
+- Tab **Vietlott Power 6/55**: cập nhật kết quả Vietlott, thống kê tần suất 01-55, xem đầy đủ từng kỳ, dò bộ 6 số theo Jackpot 1/2 và các giải cố định, lịch quay Thứ 3/5/7, và sinh bộ số tham khảo.
+
+> Dự đoán chỉ phục vụ tham khảo/thử nghiệm. Xổ số là quá trình ngẫu nhiên; tần suất lịch sử không bảo đảm kết quả tương lai.
+
+### Chạy nhanh trên PowerShell
+
+```powershell
+uv sync --frozen --no-dev --no-install-project
+uv run src/fetch_xsmn.py --days 365
+uv run src/fetch_vietlott_power655.py --limit 8
+uv run streamlit run src/xsmn_app.py
+```
+
+Mở `http://localhost:8501` trong trình duyệt. Dữ liệu XSMN được lưu local tại `data/xsmn.sqlite3`; dữ liệu Vietlott Power 6/55 được lưu tại `data/vietlott_power655.sqlite3`; cả hai đều không được commit. Xem thiết kế, công thức và lệnh kiểm thử trong [docs/xsmn-app.md](docs/xsmn-app.md) và [docs/vietlott-power655-app.md](docs/vietlott-power655-app.md).
+
 ## Data (Dữ liệu)
 
 |          | CSV | JSON | Parquet |
