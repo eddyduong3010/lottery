@@ -62,13 +62,14 @@ def sync_missing_results(
     try:
         latest_page = client.fetch_history()
         latest_id = max(int(draw.draw_id) for draw in latest_page)
+        latest_by_id = {draw.draw_id: draw for draw in latest_page}
         existing = repository.draw_ids()
         missing_ids = [f'{draw_id:05d}' for draw_id in range(1, latest_id + 1) if f'{draw_id:05d}' not in existing]
         if len(missing_ids) > bulk_threshold:
             draws = client.fetch_all_draws()
-            draws.extend(client.fetch_detail(draw.draw_id) for draw in latest_page)
+            draws.extend(latest_page)
         else:
-            draws = [client.fetch_detail(draw_id) for draw_id in missing_ids]
+            draws = [latest_by_id.get(draw_id) or client.fetch_detail(draw_id) for draw_id in missing_ids]
     except Exception as exc:
         return IngestionReport(0, 0, str(exc))
     stored = repository.upsert_draws(draws)

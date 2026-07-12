@@ -82,5 +82,5 @@ def test_power_startup_sync_fetches_only_missing_draw_ids(tmp_path) -> None:
 
     assert report.requested_draws == 1
     assert report.stored_draws == 1
-    assert client.detail_requests == ['00003']
+    assert client.detail_requests == []
     assert repository.draw_ids() == {'00001', '00002', '00003'}

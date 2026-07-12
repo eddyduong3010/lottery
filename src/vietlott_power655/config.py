@@ -16,6 +16,8 @@ AJAX_HISTORY_URL = (
     'https://vietlott.vn/ajaxpro/Vietlott.PlugIn.WebParts.Game655CompareWebPart,Vietlott.PlugIn.WebParts.ashx'
 )
 SITE_ID = 'main.frontend.vi'
+XOSO_HISTORY_URL = 'https://xoso.com.vn/xo-so-power-655.html'
+XOSO_MORE_URL_TEMPLATE = 'https://xoso.com.vn/XSDienToan/GetMorePower655?pageIndex={page_index}'
 
 
 @dataclass(frozen=True, slots=True)

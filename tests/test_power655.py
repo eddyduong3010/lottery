@@ -7,7 +7,12 @@ from vietlott_power655.models import Power655Draw, PrizeTierResult
 from vietlott_power655.prediction import generate_ticket_candidates
 from vietlott_power655.prize_checker import check_ticket, parse_ticket_numbers
 from vietlott_power655.repository import SQLiteRepository
-from vietlott_power655.scraper import VietlottPower655Client, parse_detail_html, parse_history_html
+from vietlott_power655.scraper import (
+    VietlottPower655Client,
+    parse_detail_html,
+    parse_history_html,
+    parse_xoso_history_html,
+)
 
 
 def make_power_draw(draw_id: str = '01370') -> Power655Draw:
@@ -94,6 +99,34 @@ def test_parse_power655_ajax_fragment_and_metadata() -> None:
     assert VietlottPower655Client._history_key(html) == 'history-key'
     assert VietlottPower655Client._history_draw_count(html) == 2
     assert parse_history_html(html)[0].draw_id == '01370'
+
+
+def test_parse_xoso_power655_fallback_with_prizes() -> None:
+    html = """
+    <section class="section">
+      <header><h2>Xổ số Power 6/55, <a href="/xo-so-power-655-ngay-11-07-2026.html">11/07/2026</a></h2></header>
+      <div class="mega-results">
+        <div class="jackpot-item">Kỳ quay thưởng: <strong>#01370</strong></div>
+        <div class="jackpot-item"><span class="btn-results">09</span><span class="btn-results">17</span>
+        <span class="btn-results">20</span><span class="btn-results">33</span><span class="btn-results">41</span>
+        <span class="btn-results">42</span><span class="btn-results bg_jackpot">40</span></div>
+      </div>
+      <table><tbody>
+        <tr><td>Jackpot 1</td><td></td><td>1</td><td>102.862.626.150</td></tr>
+        <tr><td>Jackpot 2</td><td></td><td>1</td><td>4.564.759.400</td></tr>
+        <tr><td>Giải nhất</td><td></td><td>23</td><td>40.000.000</td></tr>
+        <tr><td>Giải nhì</td><td></td><td>1.856</td><td>500.000</td></tr>
+        <tr><td>Giải ba</td><td></td><td>31.612</td><td>50.000</td></tr>
+      </tbody></table>
+    </section>
+    """
+    draws = parse_xoso_history_html(html)
+
+    assert len(draws) == 1
+    assert draws[0].draw_id == '01370'
+    assert draws[0].main_numbers == ('09', '17', '20', '33', '41', '42')
+    assert draws[0].bonus_number == '40'
+    assert draws[0].prizes[0].payout_vnd == 102_862_626_150
 
 
 def test_parse_power655_detail_html_with_prizes() -> None:

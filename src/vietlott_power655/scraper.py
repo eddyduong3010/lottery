@@ -20,6 +20,8 @@ from .config import (
     PRIZE_DISPLAY_ORDER,
     PRIZE_SPECS,
     SITE_ID,
+    XOSO_HISTORY_URL,
+    XOSO_MORE_URL_TEMPLATE,
     canonical_tier_code,
 )
 from .models import Power655Draw, PrizeTierResult
@@ -123,6 +125,59 @@ def parse_detail_html(html: str, source_url: str = '') -> Power655Draw:
         source_url=source_url,
         fetched_at=datetime.now(VIETNAM_TZ),
     )
+
+
+def parse_xoso_history_html(html: str, source_url: str = XOSO_HISTORY_URL) -> list[Power655Draw]:
+    soup = BeautifulSoup(html, 'lxml')
+    fetched_at = datetime.now(VIETNAM_TZ)
+    draws: list[Power655Draw] = []
+    for section in soup.select('section.section'):
+        heading = section.select_one('h2')
+        result_box = section.select_one('.mega-results')
+        if heading is None or result_box is None or 'Power 6/55' not in heading.get_text(' ', strip=True):
+            continue
+        date_match = re.search(r'(\d{2})/(\d{2})/(\d{4})', heading.get_text(' ', strip=True))
+        draw_text = result_box.get_text(' ', strip=True)
+        draw_match = re.search(r'#(\d+)', draw_text)
+        numbers = [span.get_text('', strip=True) for span in result_box.select('span.btn-results')]
+        if date_match is None or draw_match is None or len(numbers) != 7:
+            continue
+        day, month, year = (int(value) for value in date_match.groups())
+        prizes: list[PrizeTierResult] = []
+        for row in section.select('table tbody tr'):
+            cells = row.find_all('td', recursive=False)
+            if len(cells) < 4:
+                continue
+            try:
+                tier_code = canonical_tier_code(cells[0].get_text(' ', strip=True))
+            except ValueError:
+                continue
+            prizes.append(
+                PrizeTierResult(
+                    tier_code,
+                    parse_vnd(cells[2].get_text(' ', strip=True)),
+                    parse_vnd(cells[3].get_text(' ', strip=True)),
+                )
+            )
+        prize_map = {prize.tier_code: prize for prize in prizes}
+        completed_prizes = tuple(
+            prize_map.get(code, PrizeTierResult(code, None, PRIZE_SPECS[code].fixed_payout_vnd))
+            for code in PRIZE_DISPLAY_ORDER
+        )
+        detail_link = heading.find('a', href=re.compile(r'power-655-ngay'))
+        detail_url = urljoin(source_url, detail_link.get('href', '')) if detail_link else source_url
+        draws.append(
+            Power655Draw(
+                draw_id=draw_match.group(1),
+                draw_date=date(year, month, day),
+                main_numbers=tuple(numbers[:6]),
+                bonus_number=numbers[6],
+                prizes=completed_prizes,
+                source_url=detail_url,
+                fetched_at=fetched_at,
+            )
+        )
+    return draws
 
 
 class VietlottPower655Client:
@@ -233,9 +288,15 @@ class VietlottPower655Client:
         return parse_history_html(fragment, HISTORY_URL)
 
     def fetch_history(self) -> list[Power655Draw]:
-        return parse_history_html(self._get_text(HISTORY_URL), HISTORY_URL)
+        try:
+            return parse_history_html(self._get_text(HISTORY_URL), HISTORY_URL)
+        except VietlottSourceError:
+            draws = parse_xoso_history_html(self._get_text(XOSO_HISTORY_URL), XOSO_HISTORY_URL)
+            if not draws:
+                raise VietlottSourceError('Nguồn dự phòng không trả về kết quả Power 6/55')
+            return draws
 
-    def fetch_all_draws(
+    def _fetch_all_official(
         self,
         request_delay_seconds: float = 0.05,
         progress: Callable[[int, int], None] | None = None,
@@ -267,6 +328,51 @@ class VietlottPower655Client:
                 f'Lịch sử không đầy đủ: Vietlott công bố {expected_count} kỳ nhưng chỉ tải được {len(draws)} kỳ'
             )
         return draws
+
+    def _fetch_all_xoso(
+        self,
+        request_delay_seconds: float = 0.05,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> list[Power655Draw]:
+        first_page = parse_xoso_history_html(self._get_text(XOSO_HISTORY_URL), XOSO_HISTORY_URL)
+        if not first_page:
+            raise VietlottSourceError('Nguồn dự phòng không có trang lịch sử Power 6/55 đầu tiên')
+        draws_by_id = {draw.draw_id: draw for draw in first_page}
+        if progress:
+            progress(1, 200)
+        for page_index in range(1, 200):
+            if request_delay_seconds > 0:
+                time.sleep(request_delay_seconds)
+            page_url = XOSO_MORE_URL_TEMPLATE.format(page_index=page_index)
+            page_draws = parse_xoso_history_html(self._get_text(page_url), page_url)
+            if not page_draws:
+                break
+            previous_count = len(draws_by_id)
+            for draw in page_draws:
+                draws_by_id[draw.draw_id] = draw
+            if len(draws_by_id) == previous_count:
+                break
+            if progress:
+                progress(page_index + 1, 200)
+        draws = sorted(draws_by_id.values(), key=lambda draw: (draw.draw_date, int(draw.draw_id)))
+        numeric_ids = {int(draw.draw_id) for draw in draws}
+        latest_id = max(numeric_ids)
+        missing_ids = set(range(1, latest_id + 1)) - numeric_ids
+        if missing_ids:
+            raise VietlottSourceError(
+                f'Nguồn dự phòng thiếu {len(missing_ids)} kỳ Power 6/55 trong chuỗi 1-{latest_id}'
+            )
+        return draws
+
+    def fetch_all_draws(
+        self,
+        request_delay_seconds: float = 0.05,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> list[Power655Draw]:
+        try:
+            return self._fetch_all_official(request_delay_seconds, progress)
+        except VietlottSourceError:
+            return self._fetch_all_xoso(request_delay_seconds, progress)
 
     def fetch_detail(self, draw_id: str) -> Power655Draw:
         url = DETAIL_URL_TEMPLATE.format(draw_id=draw_id)
