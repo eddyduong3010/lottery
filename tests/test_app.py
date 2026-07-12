@@ -2,8 +2,9 @@ from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
+import bcrypt
+
 from helpers import make_draw
-from app_auth import hash_password
 from streamlit.testing.v1 import AppTest
 
 from xsmn.repository import SQLiteRepository
@@ -18,8 +19,9 @@ def test_streamlit_app_requires_valid_login(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv('LOTTERY_AUTH_USERNAME', 'minh')
     monkeypatch.setenv(
         'LOTTERY_AUTH_PASSWORD_HASH',
-        hash_password('test-password', salt=b'0123456789abcdef', iterations=100_000),
+        bcrypt.hashpw(b'test-password', bcrypt.gensalt(rounds=4)).decode(),
     )
+    monkeypatch.setenv('LOTTERY_AUTH_COOKIE_KEY', 'test-cookie-key-with-at-least-thirty-two-characters')
     app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
 
     assert app.title[0].value == 'Đăng nhập hệ thống xổ số'
