@@ -11,6 +11,7 @@ import streamlit_authenticator as stauth
 from prediction_history import (
     prediction_performance_frame,
     saved_prediction_candidates,
+    saved_xsmn_prize_predictions,
     update_prediction_history,
 )
 from startup_sync import StartupSyncReport, sync_all_missing
@@ -207,19 +208,25 @@ def render_prediction_performance(history: dict, game: str) -> None:
     exact_rate = exact_hits / len(evaluated) if len(evaluated) else 0.0
     metric_columns[2].metric('Trúng chính xác', exact_hits, f'{exact_rate:.2%}', delta_color='off')
     if game == 'xsmn':
-        average_match = evaluated['best_suffix_digits'].dropna().mean() if not evaluated.empty else 0.0
-        metric_columns[3].metric('Khớp đuôi tốt nhất TB', f'{average_match:.2f}/6 số')
+        average_hits = evaluated['prize_hits'].dropna().mean() if not evaluated.empty else 0.0
+        metric_columns[3].metric('Kết quả khớp trung bình', f'{average_hits:.2f}/18 kết quả')
         display = frame.assign(
             station=frame['station_code'].map(lambda code: STATIONS[code].name if code in STATIONS else code),
-            score=frame['best_suffix_digits'].map(lambda value: '' if pd.isna(value) else f'{int(value)}/6 số'),
+            score=frame.apply(
+                lambda row: ''
+                if pd.isna(row['prize_hits'])
+                else f'{int(row["prize_hits"])}/{int(row["prize_total"])} kết quả · '
+                f'ĐB khớp đuôi {int(row["best_suffix_digits"])}/6',
+                axis=1,
+            ),
         )[['target_date', 'station', 'candidates', 'actual', 'best_candidate', 'score', 'model_version']].rename(
             columns={
                 'target_date': 'Ngày quay',
                 'station': 'Đài',
-                'candidates': 'Các dãy đã dự đoán',
-                'actual': 'Kết quả thật',
-                'best_candidate': 'Dãy gần nhất',
-                'score': 'Mức khớp',
+                'candidates': 'Dãy đặc biệt đã dự đoán',
+                'actual': 'Giải đặc biệt thật',
+                'best_candidate': 'Dãy đặc biệt đối chiếu',
+                'score': 'Đối chiếu toàn bộ giải',
                 'model_version': 'Phiên bản mô hình',
             }
         )
@@ -675,23 +682,34 @@ with tabs[4]:
                 st.markdown('#### Thành phần điểm')
                 st.dataframe(display_ranked, hide_index=True, width='stretch', height=360)
 
-            full_candidates = saved_prediction_candidates(prediction_history, 'xsmn', target_date, prediction_station)
-            st.markdown('#### Dãy 6 số tham khảo cho giải đặc biệt')
-            if full_candidates.empty:
-                st.info('Chưa có đủ kết quả giải đặc biệt trước ngày dự đoán để sinh dãy 6 số.')
+            full_draw_prediction = saved_xsmn_prize_predictions(prediction_history, target_date, prediction_station)
+            st.markdown('#### Bảng dự đoán cố định toàn bộ giải')
+            if full_draw_prediction.empty:
+                st.info('Chưa có đủ lịch sử trước ngày quay để sinh bảng dự đoán đầy đủ.')
             else:
-                candidate_columns = st.columns(len(full_candidates))
-                for column, candidate in zip(candidate_columns, full_candidates.itertuples(index=False), strict=True):
-                    column.metric(
-                        'Dãy tham khảo',
-                        candidate.value,
-                        f'Điểm {candidate.model_score:.1f}/100 · XS giải ĐB 0,000100%',
-                        delta_color='off',
+                prediction_rows = []
+                for prize_code in PRIZE_DISPLAY_ORDER:
+                    prize_values = full_draw_prediction[full_draw_prediction['prize_code'] == prize_code]
+                    if prize_values.empty:
+                        continue
+                    prediction_rows.append(
+                        {
+                            'Giải': PRIZE_SPECS[prize_code].label,
+                            'Số kết quả': len(prize_values),
+                            'Dự đoán cố định': '  •  '.join(prize_values['number'].astype(str)),
+                            'Điểm mô hình TB': f'{prize_values["model_score"].mean():.1f}/100',
+                        }
                     )
+                st.dataframe(pd.DataFrame(prediction_rows), hide_index=True, width='stretch')
+                st.caption(
+                    'Đúng cơ cấu một kỳ đài: 1 giải tám, 1 giải bảy, 3 giải sáu, 1 giải năm, '
+                    '7 giải tư, 2 giải ba, 1 giải nhì, 1 giải nhất và 1 giải đặc biệt — tổng 18 kết quả.'
+                )
             st.caption(
                 'Điểm = 50% thành phần tần suất gần + 30% tần suất dài hạn + 20% độ trễ; '
                 'mỗi thành phần được chuẩn hóa min–max về thang 0–100. '
-                'Dãy 6 số dùng tần suất chữ số theo từng vị trí và làm trơn Laplace; không phải xác suất trúng.'
+                'Bảng đầy đủ dùng tần suất chữ số theo từng vị trí của từng giải và làm trơn Laplace; '
+                'không phải xác suất trúng.'
             )
     st.divider()
     if prediction_history_error:

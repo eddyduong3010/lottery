@@ -13,8 +13,7 @@ from vietlott_power655.prediction import MODEL_VERSION as POWER655_MODEL_VERSION
 from vietlott_power655.prediction import generate_ticket_candidates
 from xsmn.calendar import VIETNAM_TZ, next_draw_date as next_xsmn_draw_date
 from xsmn.config import STATIONS
-from xsmn.prediction import MODEL_VERSION as XSMN_MODEL_VERSION
-from xsmn.prediction import generate_special_number_candidates
+from xsmn.prediction import FULL_DRAW_MODEL_VERSION, generate_full_draw_prediction
 
 SCHEMA_VERSION = 1
 
@@ -63,15 +62,32 @@ def _longest_matching_suffix(candidate: str, actual: str) -> int:
     return 0
 
 
-def _evaluate_xsmn_prediction(record: dict[str, Any], actual: str, evaluated_at: str) -> None:
+def _evaluate_xsmn_prediction(record: dict[str, Any], actual_results: dict[str, list[str]], evaluated_at: str) -> None:
+    actual = next((number for number in actual_results.get('db', []) if len(number) == 6), '')
+    if not actual:
+        return
     candidates = [str(candidate['value']) for candidate in record.get('candidates', [])]
     suffix_matches = [(_longest_matching_suffix(candidate, actual), candidate) for candidate in candidates]
     best_suffix_digits, best_candidate = max(suffix_matches, default=(0, ''))
-    record['actual'] = {'special_number': actual, 'evaluated_at': evaluated_at}
+    prize_predictions = record.get('prize_predictions', [])
+    prize_hits = [
+        prediction
+        for prediction in prize_predictions
+        if str(prediction.get('number', '')) in actual_results.get(str(prediction.get('prize_code', '')), [])
+    ]
+    record['actual'] = {
+        'special_number': actual,
+        'prize_results': actual_results,
+        'evaluated_at': evaluated_at,
+    }
     record['metrics'] = {
         'exact_hit': actual in candidates,
         'best_suffix_digits': best_suffix_digits,
         'best_candidate': best_candidate,
+        'prize_hits': len(prize_hits),
+        'prize_total': len(prize_predictions),
+        'prize_hit_rate': len(prize_hits) / len(prize_predictions) if prize_predictions else 0.0,
+        'hit_prize_codes': sorted({str(prediction['prize_code']) for prediction in prize_hits}),
     }
 
 
@@ -104,13 +120,14 @@ def _evaluate_predictions(
     power655_draws: pd.DataFrame,
     evaluated_at: str,
 ) -> None:
-    xsmn_actual: dict[tuple[str, str], str] = {}
+    xsmn_actual: dict[tuple[str, str], dict[str, list[str]]] = {}
     if not xsmn_results.empty:
-        special = xsmn_results[xsmn_results['prize_code'] == 'db'].copy()
-        special['draw_date'] = pd.to_datetime(special['draw_date']).dt.date.astype(str)
-        for row in special.itertuples(index=False):
-            if len(str(row.number)) == 6:
-                xsmn_actual[(str(row.draw_date), str(row.station_code))] = str(row.number)
+        work = xsmn_results.copy()
+        work['draw_date'] = pd.to_datetime(work['draw_date']).dt.date.astype(str)
+        for row in work.itertuples(index=False):
+            key = (str(row.draw_date), str(row.station_code))
+            prize_results = xsmn_actual.setdefault(key, {})
+            prize_results.setdefault(str(row.prize_code), []).append(str(row.number))
 
     power_actual: dict[str, tuple[str, str]] = {}
     if not power655_draws.empty:
@@ -140,6 +157,55 @@ def _lock_one_candidate_per_draw(predictions: list[dict[str, Any]]) -> None:
             record['candidates'] = [min(candidates, key=lambda candidate: int(candidate.get('rank', 9999)))]
 
 
+def _full_prediction_payload(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    return [
+        {
+            'prize_code': str(row.prize_code),
+            'ordinal': int(row.ordinal),
+            'number': str(row.number),
+            'model_score': float(row.model_score),
+        }
+        for row in frame.itertuples(index=False)
+    ]
+
+
+def _ensure_xsmn_full_predictions(predictions: list[dict[str, Any]], results: pd.DataFrame) -> None:
+    for record in predictions:
+        if record.get('game') != 'xsmn':
+            continue
+        locked_candidate = next(
+            (candidate for candidate in record.get('candidates', []) if candidate.get('value')),
+            None,
+        )
+        if record.get('prize_predictions'):
+            if locked_candidate:
+                for prediction in record['prize_predictions']:
+                    if prediction.get('prize_code') == 'db':
+                        prediction['number'] = str(locked_candidate['value'])
+                        prediction['model_score'] = float(locked_candidate.get('model_score', 0.0))
+            continue
+        target_date = date.fromisoformat(str(record['target_date']))
+        station_code = str(record['station_code'])
+        recent_draws = max(int(record.get('recent_draws', 30)), 1)
+        station_history = results[
+            (results['station_code'] == station_code) & (pd.to_datetime(results['draw_date']).dt.date < target_date)
+        ].copy()
+        full_prediction = generate_full_draw_prediction(
+            station_history,
+            station_code,
+            target_date,
+            recent_draws=recent_draws,
+        )
+        if full_prediction.empty:
+            continue
+        if locked_candidate:
+            special_mask = full_prediction['prize_code'] == 'db'
+            full_prediction.loc[special_mask, 'number'] = str(locked_candidate['value'])
+            full_prediction.loc[special_mask, 'model_score'] = float(locked_candidate.get('model_score', 0.0))
+        record['prize_predictions'] = _full_prediction_payload(full_prediction)
+        record['prize_model_version'] = FULL_DRAW_MODEL_VERSION
+
+
 def _append_xsmn_predictions(
     predictions: list[dict[str, Any]],
     locked_keys: set[tuple[str, str, str]],
@@ -161,16 +227,18 @@ def _append_xsmn_predictions(
         if draw_count < 1:
             continue
         recent_draws = min(30, draw_count)
-        candidates = generate_special_number_candidates(
+        full_prediction = generate_full_draw_prediction(
             station_history,
             station_code,
             target_date,
-            candidate_count=5,
             recent_draws=recent_draws,
-        ).head(1)
-        if candidates.empty:
+        )
+        if full_prediction.empty:
             continue
-        prediction_id = _prediction_id('xsmn', target_date, station_code, XSMN_MODEL_VERSION)
+        special = full_prediction[full_prediction['prize_code'] == 'db'].head(1)
+        if special.empty:
+            continue
+        prediction_id = _prediction_id('xsmn', target_date, station_code, FULL_DRAW_MODEL_VERSION)
         training_cutoff = pd.to_datetime(station_history['draw_date']).max().date().isoformat()
         predictions.append(
             {
@@ -178,14 +246,16 @@ def _append_xsmn_predictions(
                 'game': 'xsmn',
                 'target_date': target_date.isoformat(),
                 'station_code': station_code,
-                'model_version': XSMN_MODEL_VERSION,
+                'model_version': FULL_DRAW_MODEL_VERSION,
                 'recent_draws': recent_draws,
                 'training_cutoff': training_cutoff,
                 'created_at': created_at,
                 'candidates': [
                     {'rank': rank, 'value': str(row.number), 'model_score': float(row.model_score)}
-                    for rank, row in enumerate(candidates.itertuples(index=False), start=1)
+                    for rank, row in enumerate(special.itertuples(index=False), start=1)
                 ],
+                'prize_predictions': _full_prediction_payload(full_prediction),
+                'prize_model_version': FULL_DRAW_MODEL_VERSION,
             }
         )
         locked_keys.add(prediction_key)
@@ -245,6 +315,7 @@ def update_prediction_history(
     history = deepcopy(original)
     predictions = history['predictions']
     _lock_one_candidate_per_draw(predictions)
+    _ensure_xsmn_full_predictions(predictions, xsmn_results)
     _evaluate_predictions(predictions, xsmn_results, power655_draws, created_at)
 
     locked_keys = {
@@ -303,6 +374,29 @@ def saved_prediction_candidates(
     return frame.sort_values('rank').reset_index(drop=True)
 
 
+def saved_xsmn_prize_predictions(history: dict[str, Any], target_date: date, station_code: str) -> pd.DataFrame:
+    matching = [
+        record
+        for record in history.get('predictions', [])
+        if _prediction_key(
+            str(record.get('game', '')),
+            str(record.get('target_date', '')),
+            str(record.get('station_code', '')),
+        )
+        == _prediction_key('xsmn', target_date, station_code)
+    ]
+    if not matching:
+        return pd.DataFrame(columns=['prize_code', 'ordinal', 'number', 'model_score'])
+    locked = min(matching, key=lambda record: str(record.get('created_at', '')))
+    frame = pd.DataFrame(
+        locked.get('prize_predictions', []),
+        columns=['prize_code', 'ordinal', 'number', 'model_score'],
+    )
+    if frame.empty:
+        return frame
+    return frame.sort_values(['prize_code', 'ordinal']).reset_index(drop=True)
+
+
 def prediction_performance_frame(history: dict[str, Any], game: str) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for record in history.get('predictions', []):
@@ -321,6 +415,9 @@ def prediction_performance_frame(history: dict[str, Any], game: str) -> pd.DataF
                 'evaluated': bool(actual),
                 'exact_hit': bool(metrics.get('exact_hit', False)),
                 'best_suffix_digits': metrics.get('best_suffix_digits'),
+                'prize_hits': metrics.get('prize_hits'),
+                'prize_total': metrics.get('prize_total'),
+                'prize_hit_rate': metrics.get('prize_hit_rate'),
                 'best_main_matches': metrics.get('best_main_matches'),
                 'best_candidate': metrics.get('best_candidate', ''),
                 'model_version': record.get('model_version', ''),

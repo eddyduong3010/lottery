@@ -1,10 +1,12 @@
+from dataclasses import replace
 from datetime import date
 
 import pandas as pd
 import pytest
+from helpers import make_draw
 
 from xsmn.analytics import frequency_statistics
-from xsmn.prediction import generate_special_number_candidates, rank_suffix_candidates
+from xsmn.prediction import generate_full_draw_prediction, generate_special_number_candidates, rank_suffix_candidates
 
 
 def sample_results() -> pd.DataFrame:
@@ -124,3 +126,38 @@ def test_special_prediction_validates_window_and_candidate_count() -> None:
         generate_special_number_candidates(sample_results(), 'VL', date(2026, 7, 17), candidate_count=0)
     with pytest.raises(ValueError, match='Số kỳ'):
         generate_special_number_candidates(sample_results(), 'VL', date(2026, 7, 17), recent_draws=0)
+
+
+def test_full_draw_prediction_matches_all_xsmn_prize_slots_and_is_deterministic() -> None:
+    rows = []
+    for draw_date in (date(2026, 6, 26), date(2026, 7, 3), date(2026, 7, 10)):
+        draw = replace(make_draw(), draw_date=draw_date)
+        rows.extend(
+            {
+                'draw_date': draw.draw_date.isoformat(),
+                'station_code': draw.station_code,
+                'prize_code': result.prize_code,
+                'ordinal': result.ordinal,
+                'number': result.number,
+            }
+            for result in draw.results
+        )
+    history = pd.DataFrame(rows)
+
+    first = generate_full_draw_prediction(history, 'VL', date(2026, 7, 17), recent_draws=3)
+    second = generate_full_draw_prediction(history, 'VL', date(2026, 7, 17), recent_draws=3)
+
+    pd.testing.assert_frame_equal(first, second)
+    assert len(first) == 18
+    assert first.groupby('prize_code').size().to_dict() == {
+        'g8': 1,
+        'g7': 1,
+        'g6': 3,
+        'g5': 1,
+        'g4': 7,
+        'g3': 2,
+        'g2': 1,
+        'g1': 1,
+        'db': 1,
+    }
+    assert first['model_score'].between(0, 100).all()

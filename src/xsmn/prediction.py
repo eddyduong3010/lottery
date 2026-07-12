@@ -7,8 +7,10 @@ import numpy as np
 import pandas as pd
 
 from .analytics import frequency_statistics, select_scope
+from .config import PRIZE_DISPLAY_ORDER, PRIZE_SPECS
 
 MODEL_VERSION = 'transparent-blend-v1'
+FULL_DRAW_MODEL_VERSION = 'full-prize-positional-v1'
 
 
 def _minmax(series: pd.Series) -> pd.Series:
@@ -147,3 +149,78 @@ def generate_special_number_candidates(
         disclaimer='Dãy số tham khảo, không phải xác suất trúng thưởng.',
     )
     return frame[['number', 'model_score']].reset_index(drop=True)
+
+
+def generate_full_draw_prediction(
+    results: pd.DataFrame,
+    station_code: str,
+    target_date: date,
+    recent_draws: int = 30,
+) -> pd.DataFrame:
+    """Generate one deterministic prediction for every result slot in an XSMN draw."""
+
+    if recent_draws < 1:
+        raise ValueError('Số kỳ gần đây phải lớn hơn 0')
+    station = results[results['station_code'] == station_code].copy()
+    if station.empty:
+        return pd.DataFrame(columns=['prize_code', 'ordinal', 'number', 'model_score'])
+    station['draw_date'] = pd.to_datetime(station['draw_date'])
+    station = station[station['draw_date'] < pd.Timestamp(target_date)].copy()
+    if station.empty:
+        return pd.DataFrame(columns=['prize_code', 'ordinal', 'number', 'model_score'])
+    recent_dates = station['draw_date'].drop_duplicates().sort_values().tail(recent_draws)
+    recent_station = station[station['draw_date'].isin(recent_dates)]
+
+    rows: list[dict[str, object]] = []
+    for prize_code in PRIZE_DISPLAY_ORDER:
+        spec = PRIZE_SPECS[prize_code]
+        prize_history = station[station['prize_code'] == prize_code].copy()
+        prize_history = prize_history[prize_history['number'].astype(str).str.len() == spec.digits]
+        if prize_history.empty:
+            continue
+        recent_prize = recent_station[recent_station['prize_code'] == prize_code].copy()
+        recent_prize = recent_prize[recent_prize['number'].astype(str).str.len() == spec.digits]
+
+        position_probabilities: list[np.ndarray] = []
+        for position in range(spec.digits):
+            counts = np.ones(10, dtype=float)
+            for value in prize_history['number'].astype(str):
+                counts[int(value[position])] += 1
+            for value in recent_prize['number'].astype(str):
+                counts[int(value[position])] += 1.5
+            position_probabilities.append(counts / counts.sum())
+
+        seed_material = (f'{FULL_DRAW_MODEL_VERSION}|{station_code}|{target_date.isoformat()}|{prize_code}').encode()
+        seed = int.from_bytes(hashlib.sha256(seed_material).digest()[:8], 'big')
+        rng = np.random.default_rng(seed)
+        generated: set[str] = set()
+        attempts = 0
+        while len(generated) < spec.result_count and attempts < spec.result_count * 100:
+            attempts += 1
+            digits = [str(int(rng.choice(10, p=probabilities))) for probabilities in position_probabilities]
+            generated.add(''.join(digits))
+
+        for ordinal, number in enumerate(sorted(generated), start=1):
+            selected_likelihood = 1.0
+            maximum_likelihood = 1.0
+            for position, probabilities in enumerate(position_probabilities):
+                selected_likelihood *= float(probabilities[int(number[position])])
+                maximum_likelihood *= float(probabilities.max())
+            relative_score = 100 * selected_likelihood / maximum_likelihood if maximum_likelihood else 0.0
+            rows.append(
+                {
+                    'prize_code': prize_code,
+                    'ordinal': ordinal,
+                    'number': number,
+                    'model_score': round(relative_score, 1),
+                }
+            )
+
+    frame = pd.DataFrame(rows, columns=['prize_code', 'ordinal', 'number', 'model_score'])
+    frame.attrs.update(
+        model_version=FULL_DRAW_MODEL_VERSION,
+        training_cutoff=station['draw_date'].max(),
+        target_date=target_date,
+        disclaimer='Bảng dự đoán cố định để kiểm nghiệm mô hình, không phải xác suất trúng thưởng.',
+    )
+    return frame
