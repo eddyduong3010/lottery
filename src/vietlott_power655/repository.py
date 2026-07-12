@@ -65,6 +65,7 @@ class SQLiteRepository:
 
     def _write_draw(self, connection: sqlite3.Connection, draw: Power655Draw) -> None:
         fetched_at = draw.fetched_at.isoformat() if draw.fetched_at else None
+        existing = connection.execute('SELECT id FROM power655_draws WHERE draw_id = ?', (draw.draw_id,)).fetchone()
         connection.execute(
             """
             INSERT INTO power655_draws (
@@ -92,14 +93,16 @@ class SQLiteRepository:
         draw_pk = connection.execute('SELECT id FROM power655_draws WHERE draw_id = ?', (draw.draw_id,)).fetchone()[
             'id'
         ]
-        connection.execute('DELETE FROM power655_prizes WHERE draw_pk = ?', (draw_pk,))
-        connection.executemany(
-            """
-            INSERT INTO power655_prizes (draw_pk, tier_code, winner_count, payout_vnd)
-            VALUES (?, ?, ?, ?)
-            """,
-            [(draw_pk, prize.tier_code, prize.winner_count, prize.payout_vnd) for prize in draw.prizes],
-        )
+        incoming_has_details = any(prize.winner_count is not None for prize in draw.prizes)
+        if existing is None or incoming_has_details:
+            connection.execute('DELETE FROM power655_prizes WHERE draw_pk = ?', (draw_pk,))
+            connection.executemany(
+                """
+                INSERT INTO power655_prizes (draw_pk, tier_code, winner_count, payout_vnd)
+                VALUES (?, ?, ?, ?)
+                """,
+                [(draw_pk, prize.tier_code, prize.winner_count, prize.payout_vnd) for prize in draw.prizes],
+            )
 
     def get_draw(self, draw_id: str) -> Power655Draw | None:
         self.initialize()
@@ -154,6 +157,12 @@ class SQLiteRepository:
             date.fromisoformat(row['first']) if row['first'] else None,
             date.fromisoformat(row['last']) if row['last'] else None,
         )
+
+    def draw_ids(self) -> set[str]:
+        self.initialize()
+        with closing(self._connect()) as connection:
+            rows = connection.execute('SELECT draw_id FROM power655_draws').fetchall()
+        return {row['draw_id'] for row in rows}
 
 
 def prize_table(draw: Power655Draw) -> pd.DataFrame:

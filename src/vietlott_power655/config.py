@@ -11,6 +11,11 @@ DRAW_WEEKDAYS = (1, 3, 5)
 DRAW_CUTOFF = time(18, 30)
 HISTORY_URL = 'https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/winning-number-655'
 DETAIL_URL_TEMPLATE = 'https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/655?id={draw_id}&nocatche=1'
+AJAX_RENDER_INFO_URL = 'https://vietlott.vn/ajaxpro/Vietlott.Utility.WebEnvironments,Vietlott.Utility.ashx'
+AJAX_HISTORY_URL = (
+    'https://vietlott.vn/ajaxpro/Vietlott.PlugIn.WebParts.Game655CompareWebPart,Vietlott.PlugIn.WebParts.ashx'
+)
+SITE_ID = 'main.frontend.vi'
 
 
 @dataclass(frozen=True, slots=True)

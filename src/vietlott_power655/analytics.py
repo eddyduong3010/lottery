@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from math import comb, sqrt
+
 import pandas as pd
 
 from .config import NUMBER_MAX, NUMBER_MIN
@@ -58,13 +60,45 @@ def frequency_statistics(draws: pd.DataFrame, include_bonus: bool = False) -> pd
             'gap_draws': gap_draws.to_numpy(),
         }
     )
+    theoretical_draw_rate = (7 if include_bonus else 6) / (NUMBER_MAX - NUMBER_MIN + 1)
+    standard_error = sqrt(theoretical_draw_rate * (1 - theoretical_draw_rate) / total_draws)
+    frame['theoretical_draw_rate'] = theoretical_draw_rate
+    frame['draw_rate_difference'] = frame['draw_rate'] - theoretical_draw_rate
+    frame['z_score'] = frame['draw_rate_difference'] / standard_error
     frame.attrs.update(total_draws=total_draws, total_observations=total_observations, include_bonus=include_bonus)
     return frame
 
 
+def prize_probabilities() -> pd.DataFrame:
+    """Return exact single-ticket probabilities under a uniform 6-from-55 draw."""
+    total = comb(55, 6)
+    outcomes = (
+        ('Jackpot 1', 1),
+        ('Jackpot 2', comb(6, 5)),
+        ('Giải Nhất', comb(6, 5) * 48),
+        ('Giải Nhì', comb(6, 4) * comb(49, 2)),
+        ('Giải Ba', comb(6, 3) * comb(49, 3)),
+    )
+    rows = [
+        {'prize': prize, 'winning_combinations': count, 'probability': count / total, 'odds_one_in': total / count}
+        for prize, count in outcomes
+    ]
+    any_prize_count = sum(count for _, count in outcomes)
+    rows.append(
+        {
+            'prize': 'Bất kỳ giải nào',
+            'winning_combinations': any_prize_count,
+            'probability': any_prize_count / total,
+            'odds_one_in': total / any_prize_count,
+        }
+    )
+    return pd.DataFrame(rows)
+
+
 def top_frequency_table(statistics: pd.DataFrame, limit: int = 20) -> pd.DataFrame:
-    return (
+    ranked = (
         statistics.sort_values(['count', 'draws_with_number', 'number'], ascending=[False, False, True])
         .head(limit)
         .reset_index(drop=True)
     )
+    return ranked[['number', 'count', 'observation_rate', 'draws_with_number', 'draw_rate', 'gap_draws']]

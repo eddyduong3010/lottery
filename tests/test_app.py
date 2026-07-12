@@ -3,6 +3,7 @@ from datetime import date
 from pathlib import Path
 
 from helpers import make_draw
+from app_auth import hash_password
 from streamlit.testing.v1 import AppTest
 
 from xsmn.repository import SQLiteRepository
@@ -10,10 +11,34 @@ from xsmn.repository import SQLiteRepository
 APP_PATH = Path(__file__).resolve().parents[1] / 'src' / 'xsmn_app.py'
 
 
+def test_streamlit_app_requires_valid_login(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv('XSMN_DATABASE_PATH', str(tmp_path / 'xsmn.sqlite3'))
+    monkeypatch.setenv('VIETLOTT_POWER655_DATABASE_PATH', str(tmp_path / 'power.sqlite3'))
+    monkeypatch.setenv('LOTTERY_AUTO_SYNC_ENABLED', '0')
+    monkeypatch.setenv('LOTTERY_AUTH_USERNAME', 'minh')
+    monkeypatch.setenv(
+        'LOTTERY_AUTH_PASSWORD_HASH',
+        hash_password('test-password', salt=b'0123456789abcdef', iterations=100_000),
+    )
+    app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
+
+    assert app.title[0].value == 'Đăng nhập hệ thống xổ số'
+    assert not app.exception
+    next(item for item in app.text_input if item.label == 'Tài khoản').set_value('minh')
+    next(item for item in app.text_input if item.label == 'Mật khẩu').set_value('test-password')
+    next(item for item in app.button if item.label == 'Đăng nhập').click()
+    app.run()
+
+    assert not app.exception
+    assert app.title[0].value == 'Xổ số miền Nam — thống kê & dò vé'
+
+
 def test_streamlit_app_handles_empty_database(tmp_path, monkeypatch) -> None:
     database_path = tmp_path / 'empty-xsmn-app.sqlite3'
     monkeypatch.setenv('XSMN_DATABASE_PATH', str(database_path))
     monkeypatch.setenv('VIETLOTT_POWER655_DATABASE_PATH', str(tmp_path / 'empty-power655-app.sqlite3'))
+    monkeypatch.setenv('LOTTERY_AUTO_SYNC_ENABLED', '0')
+    monkeypatch.setenv('LOTTERY_AUTH_DISABLED', '1')
 
     app = AppTest.from_file(str(APP_PATH), default_timeout=30)
     app.run()
@@ -29,6 +54,8 @@ def test_streamlit_app_renders_chart_and_tables(tmp_path, monkeypatch) -> None:
         repository.upsert_draw(replace(make_draw(), draw_date=selected_date))
     monkeypatch.setenv('XSMN_DATABASE_PATH', str(database_path))
     monkeypatch.setenv('VIETLOTT_POWER655_DATABASE_PATH', str(tmp_path / 'power655-app-test.sqlite3'))
+    monkeypatch.setenv('LOTTERY_AUTO_SYNC_ENABLED', '0')
+    monkeypatch.setenv('LOTTERY_AUTH_DISABLED', '1')
 
     app = AppTest.from_file(str(APP_PATH), default_timeout=30)
     app.run()

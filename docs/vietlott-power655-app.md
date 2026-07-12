@@ -1,48 +1,51 @@
 # Vietlott Power 6/55 trong app Streamlit
 
-Tab `Vietlott Power 6/55` mở rộng app hiện có cho sản phẩm Power 6/55 của Vietlott. Đây là sản phẩm quay 6 số chính từ 01-55 và 1 số đặc biệt; lịch quay công khai là Thứ 3, Thứ 5, Thứ 7, 18:00-18:30.
+Tab `Vietlott Power 6/55` hỗ trợ thu thập kết quả, thống kê số 01-55, dò vé và tạo bộ số tham khảo.
 
-## Chạy nhanh
+## Tải toàn bộ lịch sử
 
 ```powershell
 uv sync --frozen --no-dev --no-install-project
-uv run src/fetch_vietlott_power655.py --limit 8
+uv run src/fetch_vietlott_power655.py --all
 uv run streamlit run src/xsmn_app.py
 ```
 
-Mở [http://localhost:8501](http://localhost:8501), chọn tab `Vietlott Power 6/55`.
+Mở [http://localhost:8501](http://localhost:8501), chọn tab `Vietlott Power 6/55`. Trong giao diện cũng có nút **Tải toàn bộ lịch sử Power 6/55**.
 
-Database mặc định: `data/vietlott_power655.sqlite3`. Có thể đổi bằng biến môi trường:
+Mỗi khi app khởi động, Power 6/55 tự đọc kỳ mới nhất và chỉ tải các ID còn thiếu. Nếu database mới hoặc thiếu trên 32 kỳ, app tự dùng phân trang để tải hàng loạt. Trạng thái đồng bộ và dự đoán cho kỳ tiếp theo xuất hiện ngay ở trang Tổng quan.
+
+Database mặc định là `data/vietlott_power655.sqlite3`. Có thể đổi đường dẫn:
 
 ```powershell
 $env:VIETLOTT_POWER655_DATABASE_PATH='data/my_power655.sqlite3'
 uv run streamlit run src/xsmn_app.py
 ```
 
-## Chức năng
+CLI `--all` dùng API phân trang Ajax phía sau trang lịch sử chính thức. Chương trình:
 
-1. **Cập nhật dữ liệu:** tải các kỳ gần nhất từ trang lịch sử công khai của Vietlott, sau đó mở từng trang chi tiết để lấy Jackpot 1, Jackpot 2, số lượng giải và giá trị giải.
-2. **Thống kê:** đếm tần suất các số 01-55, tỷ lệ quan sát, tỷ lệ kỳ có số xuất hiện, và số kỳ chưa về. Mặc định chỉ tính 6 số chính; có tùy chọn tính thêm số đặc biệt.
-3. **Kết quả theo kỳ:** xem bộ 6 số chính, số đặc biệt, bảng hạng giải và link trang nguồn Vietlott.
-4. **Dò vé:** nhập 6 số để rà Jackpot 1, Jackpot 2, Giải Nhất, Giải Nhì, Giải Ba.
-5. **Dự đoán tham khảo:** xếp hạng số và sinh bộ 6 số bằng điểm thống kê minh bạch. Điểm này không phải xác suất trúng thưởng.
+1. Đọc tổng số kỳ Vietlott đang công bố.
+2. Tải lần lượt toàn bộ trang lịch sử, mỗi trang 8 kỳ.
+3. Khử trùng theo mã kỳ và từ chối lưu nếu số kỳ tải được không khớp số công bố.
+4. Kiểm tra các ID kỳ bị thiếu trong chuỗi.
+5. Giữ nguyên dữ liệu Jackpot/giải thưởng chi tiết đã có khi cập nhật hàng loạt.
 
-## Quy tắc dò vé
+Để chỉ cập nhật các kỳ mới nhất kèm bảng giải chi tiết:
 
-| Hạng giải | Điều kiện |
-|---|---|
-| Jackpot 1 | Trùng 6 số chính |
-| Jackpot 2 | Trùng 5 số chính và số đặc biệt |
-| Giải Nhất | Trùng 5 số chính |
-| Giải Nhì | Trùng 4 số chính |
-| Giải Ba | Trùng 3 số chính |
+```powershell
+uv run src/fetch_vietlott_power655.py --limit 8
+```
 
-Giá trị Jackpot 1/2 thay đổi theo kỳ nên app ưu tiên bảng chi tiết của kỳ quay. Các giải cố định hiện dùng mức công khai trên trang kết quả Vietlott: Giải Nhất 40.000.000đ, Giải Nhì 500.000đ, Giải Ba 50.000đ.
+## Xác suất và dự đoán
 
-## Nguồn và giới hạn
+- Một số cụ thể có xác suất xuất hiện trong 6 số chính mỗi kỳ là `6/55 = 10,9091%`.
+- Một bộ 6 số cụ thể có xác suất Jackpot 1 là `1/C(55,6) = 1/28.989.675`.
+- App hiển thị xác suất lý thuyết từng hạng giải và tần suất thực nghiệm trên toàn bộ dữ liệu.
+- Điểm dự đoán kết hợp 50% tần suất gần đây, 30% tần suất dài hạn và 20% số kỳ chưa xuất hiện.
 
-- Kết quả lịch sử và chi tiết kỳ quay: [Vietlott Power 6/55](https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/winning-number-655).
-- Cơ cấu giải và cách chơi: [Vietlott Power 6/55](https://www.vietlott.vn/vi/choi/power-6-55/co-cau-giai-thuong).
-- Quy định lĩnh thưởng: [Vietlott](https://vietlott.vn/vi/trung-thuong/linh-thuong/quy-dinh-linh-thuong).
-- Trang lịch sử công khai hiện hiển thị một trang gần nhất; CLI `--limit` giới hạn số kỳ lấy từ trang đó. Nếu cần toàn bộ lịch sử nhiều năm, cần bổ sung truy cập phân trang Ajax của Vietlott.
-- App phục vụ học tập/tham khảo, không khuyến khích xem dự đoán thống kê là bảo đảm trúng thưởng.
+Điểm dự đoán là một cách xếp hạng thống kê có thể tái lập, không phải xác suất đã hiệu chỉnh. Các kỳ quay độc lập; dữ liệu quá khứ không làm một bộ số có xác suất toán học cao hơn bộ khác.
+
+## Nguồn
+
+- [Lịch sử kết quả Power 6/55 của Vietlott](https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/winning-number-655)
+- [Cơ cấu giải Power 6/55](https://www.vietlott.vn/vi/choi/power-6-55/co-cau-giai-thuong)
+- [Quy định lĩnh thưởng](https://vietlott.vn/vi/trung-thuong/linh-thuong/quy-dinh-linh-thuong)

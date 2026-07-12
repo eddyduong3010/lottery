@@ -30,10 +30,13 @@ Repository có thêm ứng dụng web local cho xổ số miền Nam với các 
 uv sync --frozen --no-dev --no-install-project
 uv run src/fetch_xsmn.py --days 365
 uv run src/fetch_vietlott_power655.py --limit 8
+uv run src/fetch_vietlott_power655.py --all
 uv run streamlit run src/xsmn_app.py
 ```
 
 Mở `http://localhost:8501` trong trình duyệt. Dữ liệu XSMN được lưu local tại `data/xsmn.sqlite3`; dữ liệu Vietlott Power 6/55 được lưu tại `data/vietlott_power655.sqlite3`; cả hai đều không được commit. Xem thiết kế, công thức và lệnh kiểm thử trong [docs/xsmn-app.md](docs/xsmn-app.md) và [docs/vietlott-power655-app.md](docs/vietlott-power655-app.md).
+
+Khi khởi động, app tự kiểm tra các kết quả còn thiếu của XSMN trong 30 ngày gần nhất và các ID kỳ Power 6/55 chưa có. Kết quả đồng bộ được cache 15 phút để các lần Streamlit rerun không gọi nguồn liên tục. Có thể cấu hình bằng `LOTTERY_AUTO_SYNC_ENABLED`, `LOTTERY_AUTO_SYNC_TTL_SECONDS` và `XSMN_AUTO_SYNC_BOOTSTRAP_DAYS`.
 
 ## Data (Dữ liệu)
 

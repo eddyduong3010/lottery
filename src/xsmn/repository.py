@@ -200,6 +200,23 @@ class SQLiteRepository:
         with closing(self._connect()) as connection:
             return int(connection.execute('SELECT COUNT(*) AS total FROM draws').fetchone()['total'])
 
+    def draw_keys(self, start_date: date | None = None, end_date: date | None = None) -> set[tuple[date, str]]:
+        self.initialize()
+        conditions: list[str] = []
+        parameters: list[str] = []
+        if start_date:
+            conditions.append('draw_date >= ?')
+            parameters.append(start_date.isoformat())
+        if end_date:
+            conditions.append('draw_date <= ?')
+            parameters.append(end_date.isoformat())
+        where_clause = f'WHERE {" AND ".join(conditions)}' if conditions else ''
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                f'SELECT draw_date, station_code FROM draws {where_clause}', parameters
+            ).fetchall()
+        return {(date.fromisoformat(row['draw_date']), row['station_code']) for row in rows}
+
     def available_draws(self) -> pd.DataFrame:
         self.initialize()
         with closing(self._connect()) as connection:

@@ -7,10 +7,14 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from app_auth import verify_credentials
+from startup_sync import StartupSyncReport, sync_all_missing
 from vietlott_power655.analytics import frequency_statistics as power655_frequency_statistics
+from vietlott_power655.analytics import prize_probabilities as power655_prize_probabilities
 from vietlott_power655.analytics import top_frequency_table as power655_top_frequency_table
 from vietlott_power655.calendar import next_draw_date as power655_next_draw_date
 from vietlott_power655.config import DRAW_WEEKDAYS as POWER655_DRAW_WEEKDAYS
+from vietlott_power655.ingestion import ingest_all as ingest_power655_all
 from vietlott_power655.ingestion import ingest_latest as ingest_power655_latest
 from vietlott_power655.prediction import generate_ticket_candidates, rank_number_candidates
 from vietlott_power655.prize_checker import check_ticket as check_power655_ticket
@@ -52,6 +56,10 @@ DATABASE_PATH = Path(os.environ.get('XSMN_DATABASE_PATH', ROOT / 'data' / 'xsmn.
 POWER655_DATABASE_PATH = Path(
     os.environ.get('VIETLOTT_POWER655_DATABASE_PATH', ROOT / 'data' / 'vietlott_power655.sqlite3')
 )
+AUTO_SYNC_ENABLED = os.environ.get('LOTTERY_AUTO_SYNC_ENABLED', '1').strip().lower() not in {'0', 'false', 'no'}
+AUTO_SYNC_TTL_SECONDS = max(int(os.environ.get('LOTTERY_AUTO_SYNC_TTL_SECONDS', '900')), 60)
+XSMN_BOOTSTRAP_DAYS = max(int(os.environ.get('XSMN_AUTO_SYNC_BOOTSTRAP_DAYS', '30')), 1)
+AUTH_DISABLED = os.environ.get('LOTTERY_AUTH_DISABLED', '0').strip().lower() in {'1', 'true', 'yes'}
 
 
 @st.cache_resource
@@ -80,8 +88,62 @@ def load_power655_draws(path: str, modified_ns: int) -> pd.DataFrame:
     return Power655Repository(path).load_draws()
 
 
+@st.cache_data(ttl=AUTO_SYNC_TTL_SECONDS, show_spinner=False)
+def run_startup_sync(xsmn_path: str, power655_path: str, bootstrap_days: int) -> StartupSyncReport:
+    return sync_all_missing(xsmn_path, power655_path, bootstrap_days)
+
+
 def database_modified_ns(path: Path) -> int:
     return path.stat().st_mtime_ns if path.exists() else 0
+
+
+def auth_config() -> tuple[str, str]:
+    secret_username = ''
+    secret_password_hash = ''
+    try:
+        auth_secrets = st.secrets.get('auth', {})
+        secret_username = str(auth_secrets.get('username', ''))
+        secret_password_hash = str(auth_secrets.get('password_hash', ''))
+    except FileNotFoundError:
+        pass
+    return (
+        os.environ.get('LOTTERY_AUTH_USERNAME', secret_username),
+        os.environ.get('LOTTERY_AUTH_PASSWORD_HASH', secret_password_hash),
+    )
+
+
+def require_authentication() -> None:
+    if AUTH_DISABLED:
+        return
+    expected_username, password_hash = auth_config()
+    if st.session_state.get('lottery_authenticated'):
+        with st.sidebar:
+            st.caption(f'Đang đăng nhập: {expected_username}')
+            if st.button('Đăng xuất', width='stretch'):
+                st.session_state['lottery_authenticated'] = False
+                st.rerun()
+        return
+
+    st.title('Đăng nhập hệ thống xổ số')
+    st.caption('Vui lòng đăng nhập để truy cập dữ liệu, thống kê và dự đoán.')
+    if not expected_username or not password_hash:
+        st.error('Máy chủ chưa cấu hình thông tin đăng nhập.')
+        st.stop()
+    with st.form('lottery_login_form'):
+        submitted_username = st.text_input('Tài khoản')
+        submitted_password = st.text_input('Mật khẩu', type='password')
+        submitted = st.form_submit_button('Đăng nhập', type='primary', width='stretch')
+    if submitted:
+        if verify_credentials(submitted_username, submitted_password, expected_username, password_hash):
+            st.session_state['lottery_authenticated'] = True
+            st.session_state['lottery_login_failures'] = 0
+            st.rerun()
+        failures = int(st.session_state.get('lottery_login_failures', 0)) + 1
+        st.session_state['lottery_login_failures'] = failures
+        st.error('Tài khoản hoặc mật khẩu không đúng.')
+        if failures >= 5:
+            st.warning('Đã đăng nhập sai nhiều lần. Hãy đóng tab và thử lại sau.')
+    st.stop()
 
 
 def format_vnd(value: int) -> str:
@@ -176,14 +238,37 @@ def render_statistical_overview(
     )
 
 
+require_authentication()
+
 repository = get_repository(str(DATABASE_PATH))
 power655_repository = get_power655_repository(str(POWER655_DATABASE_PATH))
+
+startup_sync_report: StartupSyncReport | None = None
+if AUTO_SYNC_ENABLED:
+    with st.spinner('Đang tự động kiểm tra và tải các kết quả còn thiếu...'):
+        startup_sync_report = run_startup_sync(
+            str(DATABASE_PATH),
+            str(POWER655_DATABASE_PATH),
+            XSMN_BOOTSTRAP_DAYS,
+        )
 
 st.title('Xổ số miền Nam — thống kê & dò vé')
 st.caption('Dữ liệu nhiều đài theo ngày · giữ nguyên số 0 đầu · múi giờ Asia/Ho_Chi_Minh')
 
 with st.sidebar:
     st.header('Dữ liệu')
+    if startup_sync_report is not None:
+        xsmn_sync = startup_sync_report.xsmn
+        power_sync = startup_sync_report.power655
+        if not xsmn_sync.failed_dates and not power_sync.failed_message:
+            st.success(
+                f'Tự động đồng bộ: XSMN +{xsmn_sync.stored_draws} kỳ đài, Power 6/55 +{power_sync.stored_draws} kỳ.'
+            )
+        else:
+            st.warning(
+                f'Đồng bộ chưa hoàn tất: {len(xsmn_sync.failed_dates)} ngày XSMN lỗi; '
+                f'Power 6/55: {power_sync.failed_message or "không lỗi"}.'
+            )
     update_days = st.number_input('Số ngày cần cập nhật', min_value=1, max_value=3650, value=30, step=1)
     if st.button('Cập nhật từ nguồn công khai', type='primary', width='stretch'):
         end_date = latest_available_date()
@@ -224,6 +309,57 @@ with tabs[0]:
         f'<div class="muted-card"><strong>Kỳ mở thưởng tiếp theo:</strong> '
         f'{upcoming_date:%d-%m-%Y} — {upcoming_names}</div>',
         unsafe_allow_html=True,
+    )
+    st.subheader('Dự đoán tự động cho kỳ quay tiếp theo')
+    xsmn_prediction_col, power_prediction_col = st.columns(2)
+    with xsmn_prediction_col:
+        st.markdown('#### Xổ số kiến thiết miền Nam')
+        upcoming_rows: list[dict[str, object]] = []
+        for station_code in stations_for_date(upcoming_date) if not results.empty else ():
+            station_history = results[
+                (results['station_code'] == station_code) & (results['draw_date'].dt.date < upcoming_date)
+            ].copy()
+            station_draws = station_history[['draw_date', 'station_code']].drop_duplicates().shape[0]
+            if station_draws == 0:
+                continue
+            candidates = generate_special_number_candidates(
+                station_history,
+                station_code,
+                upcoming_date,
+                candidate_count=3,
+                recent_draws=min(30, station_draws),
+            )
+            for candidate in candidates.itertuples(index=False):
+                upcoming_rows.append(
+                    {
+                        'Đài': STATIONS[station_code].name,
+                        'Dãy 6 số': candidate.number,
+                        'Điểm mô hình': candidate.model_score,
+                        'XS giải đặc biệt': '0,000100%',
+                    }
+                )
+        if upcoming_rows:
+            st.dataframe(pd.DataFrame(upcoming_rows), hide_index=True, width='stretch')
+        else:
+            st.info('Chưa đủ lịch sử XSMN để sinh dự đoán tự động.')
+    with power_prediction_col:
+        st.markdown('#### Vietlott Power 6/55')
+        if power655_draws.empty:
+            st.info('Chưa đủ lịch sử Power 6/55 để sinh dự đoán tự động.')
+        else:
+            power_target = power655_next_draw_date()
+            power_candidates = generate_ticket_candidates(
+                power655_draws,
+                power_target,
+                candidate_count=5,
+                recent_draws=min(30, power655_draws['draw_id'].nunique()),
+            ).rename(columns={'numbers': 'Bộ 6 số', 'model_score': 'Điểm mô hình'})
+            power_candidates['XS Jackpot 1'] = '0,00000345%'
+            st.caption(f'Kỳ dự kiến: {power_target:%d-%m-%Y}')
+            st.dataframe(power_candidates, hide_index=True, width='stretch')
+    st.caption(
+        'Tỷ lệ hiển thị là xác suất lý thuyết của một bộ số cụ thể. Điểm mô hình là xếp hạng từ dữ liệu lịch sử, '
+        'không phải xác suất trúng đã được hiệu chỉnh.'
     )
     if not results.empty and first_date and last_date:
         with st.sidebar:
@@ -371,7 +507,14 @@ with tabs[4]:
         'Các kết quả dưới đây chỉ là xếp hạng thống kê phục vụ tham khảo và thử nghiệm.'
     )
     if not results.empty:
-        station_choices = sorted(results['station_code'].unique(), key=lambda code: STATIONS[code].name)
+        available_station_codes = set(results['station_code'].unique())
+        upcoming_station_codes = [
+            code for code in stations_for_date(next_regional_draw_date()) if code in available_station_codes
+        ]
+        remaining_station_codes = sorted(
+            available_station_codes - set(upcoming_station_codes), key=lambda code: STATIONS[code].name
+        )
+        station_choices = upcoming_station_codes + remaining_station_codes
         prediction_station = st.selectbox(
             'Đài cần tham khảo',
             station_choices,
@@ -448,7 +591,7 @@ with tabs[4]:
                     column.metric(
                         'Dãy tham khảo',
                         candidate.number,
-                        f'Điểm {candidate.model_score:.1f}/100',
+                        f'Điểm {candidate.model_score:.1f}/100 · XS giải ĐB 0,000100%',
                         delta_color='off',
                     )
             st.caption(
@@ -475,6 +618,18 @@ with tabs[5]:
                 st.error(report.failed_message)
             else:
                 st.success(f'Đã lưu {report.stored_draws} kỳ Power 6/55.')
+        if st.button('Tải toàn bộ lịch sử Power 6/55', width='stretch'):
+            with st.spinner('Đang tải toàn bộ lịch sử từ kỳ đầu tiên; quá trình này có thể mất vài phút...'):
+                report = ingest_power655_all(power655_repository, VietlottPower655Client())
+            load_power655_draws.clear()
+            if report.failed_message:
+                st.error(report.failed_message)
+            else:
+                st.success(
+                    f'Đã lưu {report.stored_draws} kỳ, từ #{report.first_draw_id} đến #{report.last_draw_id}; '
+                    f'thiếu {len(report.missing_draw_ids)} ID kỳ.'
+                )
+                st.rerun()
     with info_col:
         st.markdown(
             f'<div class="muted-card"><strong>Kỳ Power 6/55 tiếp theo:</strong> '
@@ -491,7 +646,7 @@ with tabs[5]:
         power_tabs = st.tabs(['Thống kê', 'Kết quả theo kỳ', 'Dò vé', 'Lịch mở thưởng', 'Dự đoán tham khảo'])
 
         with power_tabs[0]:
-            default_power_start = max(power655_first_date, power655_last_date - timedelta(days=365))
+            default_power_start = power655_first_date
             selected_power_range = st.date_input(
                 'Khoảng thời gian Power 6/55',
                 value=(default_power_start, power655_last_date),
@@ -622,6 +777,26 @@ with tabs[5]:
                 'Vietlott là trò chơi ngẫu nhiên. Điểm dưới đây chỉ là xếp hạng thống kê theo lịch sử, '
                 'không phải xác suất trúng thưởng.'
             )
+            probability_table = power655_prize_probabilities().rename(
+                columns={
+                    'prize': 'Hạng giải',
+                    'winning_combinations': 'Số tổ hợp trúng',
+                    'probability': 'Xác suất một vé',
+                    'odds_one_in': 'Tỷ lệ 1 trên',
+                }
+            )
+            probability_table['Xác suất một vé'] = probability_table['Xác suất một vé'].map(
+                lambda value: f'{value:.8%}'
+            )
+            probability_table['Tỷ lệ 1 trên'] = probability_table['Tỷ lệ 1 trên'].map(
+                lambda value: f'{value:,.1f}'.replace(',', '.')
+            )
+            st.markdown('#### Xác suất lý thuyết cho một bộ 6 số')
+            st.dataframe(probability_table, hide_index=True, width='stretch')
+            st.caption(
+                'Mọi bộ 6 số hợp lệ có cùng xác suất Jackpot 1 là 1/28.989.675. '
+                'Thống kê lịch sử chỉ dùng để tạo điểm xếp hạng tham khảo, không làm tăng xác suất toán học của bộ số.'
+            )
             draw_count = power655_draws['draw_id'].nunique()
             if draw_count <= 1:
                 recent_power_window = 1
@@ -669,5 +844,8 @@ with tabs[5]:
                 candidate_columns = st.columns(len(ticket_candidates))
                 for column, candidate in zip(candidate_columns, ticket_candidates.itertuples(index=False), strict=True):
                     column.metric(
-                        'Bộ số', candidate.numbers, f'Điểm {candidate.model_score:.1f}/100', delta_color='off'
+                        'Bộ số',
+                        candidate.numbers,
+                        f'Điểm {candidate.model_score:.1f}/100 · XS Jackpot 1: 0,00000345%',
+                        delta_color='off',
                     )
