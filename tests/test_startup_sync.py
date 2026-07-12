@@ -6,6 +6,7 @@ from vietlott_power655.models import Power655Draw, PrizeTierResult
 from vietlott_power655.ingestion import sync_missing_results as sync_power_missing
 from vietlott_power655.repository import SQLiteRepository as PowerRepository
 from xsmn.calendar import stations_for_date
+from xsmn.ingestion import ingest_missing_range_parallel
 from xsmn.ingestion import sync_missing_results as sync_xsmn_missing
 from xsmn.repository import SQLiteRepository as XSMNRepository
 
@@ -66,6 +67,31 @@ def test_xsmn_startup_sync_fetches_incomplete_date(tmp_path, monkeypatch) -> Non
     assert not report.failed_dates
     assert repository.count_draws() == len(stations_for_date(selected_date))
     assert client.requested_dates == [selected_date]
+
+
+def test_parallel_xsmn_backfill_skips_complete_dates(tmp_path) -> None:
+    first_date = date(2026, 7, 9)
+    second_date = date(2026, 7, 10)
+    repository = XSMNRepository(tmp_path / 'xsmn-parallel.sqlite3')
+    repository.upsert_draws(
+        replace(make_draw(station_code=station_code), draw_date=first_date)
+        for station_code in stations_for_date(first_date)
+    )
+    client = FakeXSMNClient(second_date)
+
+    report = ingest_missing_range_parallel(
+        repository,
+        first_date,
+        second_date,
+        workers=4,
+        client_factory=lambda: client,
+        batch_draw_limit=2,
+    )
+
+    assert report.requested_days == 1
+    assert not report.failed_dates
+    assert set(client.requested_dates) == {second_date}
+    assert repository.count_draws() == len(stations_for_date(first_date)) + len(stations_for_date(second_date))
 
 
 def test_power_startup_sync_fetches_only_missing_draw_ids(tmp_path) -> None:

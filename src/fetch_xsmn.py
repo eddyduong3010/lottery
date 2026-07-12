@@ -6,9 +6,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from xsmn.calendar import latest_available_date
-from xsmn.ingestion import ingest_range
+from xsmn.ingestion import ingest_missing_range_parallel
 from xsmn.repository import SQLiteRepository
-from xsmn.scraper import XosoComClient
 
 
 def parse_date(value: str) -> date:
@@ -24,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--days', type=int, default=30, help='Số ngày gần nhất nếu không truyền --from-date')
     parser.add_argument('--from-date', type=parse_date)
     parser.add_argument('--to-date', type=parse_date)
+    parser.add_argument('--workers', type=int, default=12, help='Số luồng tải song song, tối đa 24')
     return parser
 
 
@@ -34,12 +34,17 @@ def main() -> int:
     end_date = args.to_date or latest_available_date()
     start_date = args.from_date or end_date - timedelta(days=max(args.days, 1) - 1)
     repository = SQLiteRepository(args.database)
-    client = XosoComClient()
 
     def show_progress(index: int, total: int, selected_date: date) -> None:
         print(f'[{index:>3}/{total}] Đang tải {selected_date:%d-%m-%Y}...')
 
-    report = ingest_range(repository, client, start_date, end_date, show_progress)
+    report = ingest_missing_range_parallel(
+        repository,
+        start_date,
+        end_date,
+        workers=max(1, min(args.workers, 24)),
+        on_progress=show_progress,
+    )
     print(f'Đã lưu {report.stored_draws} kỳ đài trong {report.requested_days} ngày.')
     if report.failed_dates:
         print('Các ngày chưa tải được:')

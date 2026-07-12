@@ -24,11 +24,10 @@ from vietlott_power655.scraper import VietlottPower655Client
 from xsmn.analytics import frequency_matrix, frequency_statistics, top_frequency_table
 from xsmn.calendar import latest_available_date, next_draw_date, next_regional_draw_date, stations_for_date
 from xsmn.config import PRIZE_DISPLAY_ORDER, PRIZE_SPECS, STATIONS, WEEKDAY_LABELS, WEEKLY_SCHEDULE
-from xsmn.ingestion import ingest_range
+from xsmn.ingestion import ingest_missing_range_parallel
 from xsmn.prediction import generate_special_number_candidates, rank_suffix_candidates
 from xsmn.prize_checker import check_ticket
 from xsmn.repository import SQLiteRepository
-from xsmn.scraper import XosoComClient
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -294,7 +293,8 @@ with st.sidebar:
                 f'Đồng bộ chưa hoàn tất: {len(xsmn_sync.failed_dates)} ngày XSMN lỗi; '
                 f'Power 6/55: {power_sync.failed_message or "không lỗi"}.'
             )
-    update_days = st.number_input('Số ngày cần cập nhật', min_value=1, max_value=3650, value=30, step=1)
+    update_days = st.number_input('Số ngày cần cập nhật', min_value=1, max_value=10_000, value=30, step=1)
+    update_workers = st.slider('Số luồng tải song song', min_value=1, max_value=24, value=12, step=1)
     if st.button('Cập nhật từ nguồn công khai', type='primary', width='stretch'):
         end_date = latest_available_date()
         start_date = end_date - timedelta(days=int(update_days) - 1)
@@ -304,10 +304,18 @@ with st.sidebar:
             progress.progress(index / total, text=f'Đang tải {selected_date:%d-%m-%Y} ({index}/{total})')
 
         with st.spinner('Đang đọc và kiểm tra cơ cấu giải...'):
-            report = ingest_range(repository, XosoComClient(), start_date, end_date, update_progress)
+            report = ingest_missing_range_parallel(
+                repository,
+                start_date,
+                end_date,
+                workers=int(update_workers),
+                on_progress=update_progress,
+            )
         load_results.clear()
         if report.stored_draws:
             st.success(f'Đã lưu {report.stored_draws} kỳ đài.')
+        elif not report.failed_dates:
+            st.info('Không có ngày hoặc đài nào còn thiếu trong khoảng đã chọn.')
         if report.failed_dates:
             with st.expander(f'{len(report.failed_dates)} ngày chưa tải được'):
                 for failed_date, error in report.failed_dates:
