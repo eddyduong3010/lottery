@@ -99,7 +99,7 @@ df.info()
 </details>
 
 <details>
-  <summary><h3>Amount of day from last appearing (Số ngày từ lần xuất hiện cuối cùng)</h2></summary>
+  <summary><h3>Amount of day from last appearing (Số ngày từ lần xuất hiện cuối cùng)</h3></summary>
 
   ![Delta](images/delta.jpg)
 
