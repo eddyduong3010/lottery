@@ -8,7 +8,11 @@ import pandas as pd
 import streamlit as st
 import streamlit_authenticator as stauth
 
-from prediction_history import prediction_performance_frame, update_prediction_history
+from prediction_history import (
+    prediction_performance_frame,
+    saved_prediction_candidates,
+    update_prediction_history,
+)
 from startup_sync import StartupSyncReport, sync_all_missing
 from vietlott_power655.analytics import frequency_statistics as power655_frequency_statistics
 from vietlott_power655.analytics import prize_probabilities as power655_prize_probabilities
@@ -17,7 +21,7 @@ from vietlott_power655.calendar import next_draw_date as power655_next_draw_date
 from vietlott_power655.config import DRAW_WEEKDAYS as POWER655_DRAW_WEEKDAYS
 from vietlott_power655.ingestion import ingest_all as ingest_power655_all
 from vietlott_power655.ingestion import ingest_latest as ingest_power655_latest
-from vietlott_power655.prediction import generate_ticket_candidates, rank_number_candidates
+from vietlott_power655.prediction import rank_number_candidates
 from vietlott_power655.prize_checker import check_ticket as check_power655_ticket
 from vietlott_power655.repository import SQLiteRepository as Power655Repository
 from vietlott_power655.repository import prize_table as power655_prize_table
@@ -26,7 +30,7 @@ from xsmn.analytics import frequency_matrix, frequency_statistics, top_frequency
 from xsmn.calendar import latest_available_date, next_draw_date, next_regional_draw_date, stations_for_date
 from xsmn.config import PRIZE_DISPLAY_ORDER, PRIZE_SPECS, STATIONS, WEEKDAY_LABELS, WEEKLY_SCHEDULE
 from xsmn.ingestion import ingest_missing_range_parallel
-from xsmn.prediction import generate_special_number_candidates, rank_suffix_candidates
+from xsmn.prediction import rank_suffix_candidates
 from xsmn.prize_checker import check_ticket
 from xsmn.repository import SQLiteRepository
 
@@ -426,24 +430,12 @@ with tabs[0]:
         st.markdown('#### Xổ số kiến thiết miền Nam')
         upcoming_rows: list[dict[str, object]] = []
         for station_code in stations_for_date(upcoming_date) if not results.empty else ():
-            station_history = results[
-                (results['station_code'] == station_code) & (results['draw_date'].dt.date < upcoming_date)
-            ].copy()
-            station_draws = station_history[['draw_date', 'station_code']].drop_duplicates().shape[0]
-            if station_draws == 0:
-                continue
-            candidates = generate_special_number_candidates(
-                station_history,
-                station_code,
-                upcoming_date,
-                candidate_count=3,
-                recent_draws=min(30, station_draws),
-            )
+            candidates = saved_prediction_candidates(prediction_history, 'xsmn', upcoming_date, station_code)
             for candidate in candidates.itertuples(index=False):
                 upcoming_rows.append(
                     {
                         'Đài': STATIONS[station_code].name,
-                        'Dãy 6 số': candidate.number,
+                        'Dãy 6 số': candidate.value,
                         'Điểm mô hình': candidate.model_score,
                         'XS giải đặc biệt': '0,000100%',
                     }
@@ -458,12 +450,10 @@ with tabs[0]:
             st.info('Chưa đủ lịch sử Power 6/55 để sinh dự đoán tự động.')
         else:
             power_target = power655_next_draw_date()
-            power_candidates = generate_ticket_candidates(
-                power655_draws,
-                power_target,
-                candidate_count=5,
-                recent_draws=min(30, power655_draws['draw_id'].nunique()),
-            ).rename(columns={'numbers': 'Bộ 6 số', 'model_score': 'Điểm mô hình'})
+            power_candidates = saved_prediction_candidates(prediction_history, 'power655', power_target).rename(
+                columns={'value': 'Bộ 6 số', 'model_score': 'Điểm mô hình'}
+            )
+            power_candidates = power_candidates.drop(columns=['rank'], errors='ignore')
             power_candidates['XS Jackpot 1'] = '0,00000345%'
             st.caption(f'Kỳ dự kiến: {power_target:%d-%m-%Y}')
             st.dataframe(power_candidates, hide_index=True, width='stretch')
@@ -685,13 +675,7 @@ with tabs[4]:
                 st.markdown('#### Thành phần điểm')
                 st.dataframe(display_ranked, hide_index=True, width='stretch', height=360)
 
-            full_candidates = generate_special_number_candidates(
-                station_results,
-                prediction_station,
-                target_date,
-                candidate_count=5,
-                recent_draws=recent_window,
-            )
+            full_candidates = saved_prediction_candidates(prediction_history, 'xsmn', target_date, prediction_station)
             st.markdown('#### Dãy 6 số tham khảo cho giải đặc biệt')
             if full_candidates.empty:
                 st.info('Chưa có đủ kết quả giải đặc biệt trước ngày dự đoán để sinh dãy 6 số.')
@@ -700,7 +684,7 @@ with tabs[4]:
                 for column, candidate in zip(candidate_columns, full_candidates.itertuples(index=False), strict=True):
                     column.metric(
                         'Dãy tham khảo',
-                        candidate.number,
+                        candidate.value,
                         f'Điểm {candidate.model_score:.1f}/100 · XS giải ĐB 0,000100%',
                         delta_color='off',
                     )
@@ -948,18 +932,13 @@ with tabs[5]:
                     )
                 with table_col:
                     st.dataframe(display_ranked_power, hide_index=True, width='stretch', height=360)
-                ticket_candidates = generate_ticket_candidates(
-                    power655_draws,
-                    target_power_date,
-                    candidate_count=5,
-                    recent_draws=recent_power_window,
-                )
+                ticket_candidates = saved_prediction_candidates(prediction_history, 'power655', target_power_date)
                 st.markdown('#### Bộ số tham khảo cho kỳ kế tiếp')
                 candidate_columns = st.columns(len(ticket_candidates))
                 for column, candidate in zip(candidate_columns, ticket_candidates.itertuples(index=False), strict=True):
                     column.metric(
                         'Bộ số',
-                        candidate.numbers,
+                        candidate.value,
                         f'Điểm {candidate.model_score:.1f}/100 · XS Jackpot 1: 0,00000345%',
                         delta_color='off',
                     )

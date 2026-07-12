@@ -2,7 +2,12 @@ from datetime import datetime
 
 import pandas as pd
 
-from prediction_history import load_prediction_history, prediction_performance_frame, update_prediction_history
+from prediction_history import (
+    load_prediction_history,
+    prediction_performance_frame,
+    saved_prediction_candidates,
+    update_prediction_history,
+)
 from xsmn.calendar import VIETNAM_TZ
 
 
@@ -64,9 +69,37 @@ def test_prediction_history_is_idempotent_and_evaluates_real_results(tmp_path) -
     )
 
     assert len(first['predictions']) == 4
+    assert all(len(record['candidates']) == 1 for record in first['predictions'])
     assert second == first
     assert load_prediction_history(history_path) == first
     assert {record['target_date'] for record in first['predictions']} == {'2026-07-13', '2026-07-14'}
+
+    changed_training = pd.concat(
+        [
+            xsmn_training_results(),
+            pd.DataFrame(
+                [
+                    {
+                        'draw_date': '2026-07-11',
+                        'station_code': 'HCM',
+                        'prize_code': 'db',
+                        'number': '999999',
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    locked = update_prediction_history(history_path, changed_training, power_training_draws(), now=initial_now)
+    assert locked == first
+    saved = saved_prediction_candidates(locked, 'xsmn', initial_now.date().replace(day=13), 'HCM')
+    expected_values = [
+        candidate['value']
+        for record in first['predictions']
+        if record['game'] == 'xsmn' and record['station_code'] == 'HCM'
+        for candidate in record['candidates']
+    ]
+    assert saved['value'].tolist() == expected_values
 
     xsmn_actual = pd.concat(
         [

@@ -11,7 +11,8 @@ import pandas as pd
 from vietlott_power655.calendar import next_draw_date as next_power655_draw_date
 from vietlott_power655.prediction import MODEL_VERSION as POWER655_MODEL_VERSION
 from vietlott_power655.prediction import generate_ticket_candidates
-from xsmn.calendar import VIETNAM_TZ, next_regional_draw_date, stations_for_date
+from xsmn.calendar import VIETNAM_TZ, next_draw_date as next_xsmn_draw_date
+from xsmn.config import STATIONS
 from xsmn.prediction import MODEL_VERSION as XSMN_MODEL_VERSION
 from xsmn.prediction import generate_special_number_candidates
 
@@ -48,6 +49,11 @@ def save_prediction_history(path: str | Path, history: dict[str, Any]) -> None:
 
 def _prediction_id(game: str, target_date: date, station_code: str, model_version: str) -> str:
     return ':'.join((game, target_date.isoformat(), station_code or '-', model_version))
+
+
+def _prediction_key(game: str, target_date: date | str, station_code: str) -> tuple[str, str, str]:
+    target_value = target_date.isoformat() if isinstance(target_date, date) else str(target_date)
+    return game, target_value, station_code
 
 
 def _longest_matching_suffix(candidate: str, actual: str) -> int:
@@ -125,16 +131,29 @@ def _evaluate_predictions(
                 _evaluate_power655_prediction(record, actual[0], actual[1], evaluated_at)
 
 
+def _lock_one_candidate_per_draw(predictions: list[dict[str, Any]]) -> None:
+    for record in predictions:
+        if record.get('actual'):
+            continue
+        candidates = record.get('candidates', [])
+        if candidates:
+            record['candidates'] = [min(candidates, key=lambda candidate: int(candidate.get('rank', 9999)))]
+
+
 def _append_xsmn_predictions(
     predictions: list[dict[str, Any]],
-    existing_ids: set[str],
+    locked_keys: set[tuple[str, str, str]],
     results: pd.DataFrame,
     target_date: date,
+    station_codes: list[str],
     created_at: str,
 ) -> None:
     if results.empty:
         return
-    for station_code in stations_for_date(target_date):
+    for station_code in station_codes:
+        prediction_key = _prediction_key('xsmn', target_date, station_code)
+        if prediction_key in locked_keys:
+            continue
         station_history = results[
             (results['station_code'] == station_code) & (pd.to_datetime(results['draw_date']).dt.date < target_date)
         ].copy()
@@ -148,12 +167,10 @@ def _append_xsmn_predictions(
             target_date,
             candidate_count=5,
             recent_draws=recent_draws,
-        )
+        ).head(1)
         if candidates.empty:
             continue
         prediction_id = _prediction_id('xsmn', target_date, station_code, XSMN_MODEL_VERSION)
-        if prediction_id in existing_ids:
-            continue
         training_cutoff = pd.to_datetime(station_history['draw_date']).max().date().isoformat()
         predictions.append(
             {
@@ -171,29 +188,30 @@ def _append_xsmn_predictions(
                 ],
             }
         )
-        existing_ids.add(prediction_id)
+        locked_keys.add(prediction_key)
 
 
 def _append_power655_prediction(
     predictions: list[dict[str, Any]],
-    existing_ids: set[str],
+    locked_keys: set[tuple[str, str, str]],
     draws: pd.DataFrame,
     target_date: date,
     created_at: str,
 ) -> None:
     if draws.empty:
         return
+    prediction_key = _prediction_key('power655', target_date, '')
+    if prediction_key in locked_keys:
+        return
     draw_count = int(draws['draw_id'].nunique())
     recent_draws = min(30, draw_count)
     prediction_id = _prediction_id('power655', target_date, '', POWER655_MODEL_VERSION)
-    if prediction_id in existing_ids:
-        return
     candidates = generate_ticket_candidates(
         draws,
         target_date,
         candidate_count=5,
         recent_draws=recent_draws,
-    )
+    ).head(1)
     if candidates.empty:
         return
     predictions.append(
@@ -212,7 +230,7 @@ def _append_power655_prediction(
             ],
         }
     )
-    existing_ids.add(prediction_id)
+    locked_keys.add(prediction_key)
 
 
 def update_prediction_history(
@@ -226,19 +244,33 @@ def update_prediction_history(
     original = load_prediction_history(path)
     history = deepcopy(original)
     predictions = history['predictions']
+    _lock_one_candidate_per_draw(predictions)
     _evaluate_predictions(predictions, xsmn_results, power655_draws, created_at)
 
-    existing_ids = {str(record.get('id')) for record in predictions}
-    _append_xsmn_predictions(
-        predictions,
-        existing_ids,
-        xsmn_results,
-        next_regional_draw_date(current),
-        created_at,
-    )
+    locked_keys = {
+        _prediction_key(
+            str(record.get('game', '')),
+            str(record.get('target_date', '')),
+            str(record.get('station_code', '')),
+        )
+        for record in predictions
+    }
+    stations_by_target: dict[date, list[str]] = {}
+    for station_code in STATIONS:
+        target_date = next_xsmn_draw_date(station_code, current)
+        stations_by_target.setdefault(target_date, []).append(station_code)
+    for target_date, station_codes in sorted(stations_by_target.items()):
+        _append_xsmn_predictions(
+            predictions,
+            locked_keys,
+            xsmn_results,
+            target_date,
+            station_codes,
+            created_at,
+        )
     _append_power655_prediction(
         predictions,
-        existing_ids,
+        locked_keys,
         power655_draws,
         next_power655_draw_date(current),
         created_at,
@@ -247,6 +279,28 @@ def update_prediction_history(
     if history != original:
         save_prediction_history(path, history)
     return history
+
+
+def saved_prediction_candidates(
+    history: dict[str, Any], game: str, target_date: date, station_code: str = ''
+) -> pd.DataFrame:
+    matching = [
+        record
+        for record in history.get('predictions', [])
+        if _prediction_key(
+            str(record.get('game', '')),
+            str(record.get('target_date', '')),
+            str(record.get('station_code', '')),
+        )
+        == _prediction_key(game, target_date, station_code)
+    ]
+    if not matching:
+        return pd.DataFrame(columns=['rank', 'value', 'model_score'])
+    locked = min(matching, key=lambda record: str(record.get('created_at', '')))
+    frame = pd.DataFrame(locked.get('candidates', []), columns=['rank', 'value', 'model_score'])
+    if frame.empty:
+        return frame
+    return frame.sort_values('rank').reset_index(drop=True)
 
 
 def prediction_performance_frame(history: dict[str, Any], game: str) -> pd.DataFrame:
