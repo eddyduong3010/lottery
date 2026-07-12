@@ -16,6 +16,7 @@ def test_streamlit_app_requires_valid_login(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv('XSMN_DATABASE_PATH', str(tmp_path / 'xsmn.sqlite3'))
     monkeypatch.setenv('VIETLOTT_POWER655_DATABASE_PATH', str(tmp_path / 'power.sqlite3'))
     monkeypatch.setenv('LOTTERY_AUTO_SYNC_ENABLED', '0')
+    monkeypatch.setenv('LOTTERY_AUTH_DISABLED', '0')
     monkeypatch.setenv('LOTTERY_AUTH_USERNAME', 'minh')
     monkeypatch.setenv(
         'LOTTERY_AUTH_PASSWORD_HASH',

@@ -58,7 +58,8 @@ POWER655_DATABASE_PATH = Path(
 AUTO_SYNC_ENABLED = os.environ.get('LOTTERY_AUTO_SYNC_ENABLED', '1').strip().lower() not in {'0', 'false', 'no'}
 AUTO_SYNC_TTL_SECONDS = max(int(os.environ.get('LOTTERY_AUTO_SYNC_TTL_SECONDS', '900')), 60)
 XSMN_BOOTSTRAP_DAYS = max(int(os.environ.get('XSMN_AUTO_SYNC_BOOTSTRAP_DAYS', '30')), 1)
-AUTH_DISABLED = os.environ.get('LOTTERY_AUTH_DISABLED', '0').strip().lower() in {'1', 'true', 'yes'}
+# Temporarily public by default. Set LOTTERY_AUTH_DISABLED=0 to restore the login gate.
+AUTH_DISABLED = os.environ.get('LOTTERY_AUTH_DISABLED', '1').strip().lower() in {'1', 'true', 'yes'}
 
 
 @st.cache_resource
