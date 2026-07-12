@@ -70,7 +70,7 @@ WEEKDAY_LABELS = {
     6: 'Chủ Nhật',
 }
 
-DRAW_CUTOFF = time(17, 15)
+DRAW_CUTOFF = time(16, 35)
 PRIZE_RULES_EFFECTIVE_FROM = date(2017, 1, 1)
 HISTORICAL_SOURCE_GAPS = frozenset(
     {
