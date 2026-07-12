@@ -20,9 +20,13 @@ class PrizeResult:
         if not isinstance(self.number, str) or not self.number.isascii() or not self.number.isdigit():
             raise ValueError('Kết quả phải là chuỗi chữ số ASCII')
         expected_digits = PRIZE_SPECS[self.prize_code].digits
-        if len(self.number) != expected_digits:
+        allowed_digits = {expected_digits}
+        if self.prize_code == 'db':
+            allowed_digits.add(5)
+        if len(self.number) not in allowed_digits:
+            expected_label = ' hoặc '.join(str(value) for value in sorted(allowed_digits))
             raise ValueError(
-                f'{PRIZE_SPECS[self.prize_code].label} phải có {expected_digits} chữ số, nhận {self.number!r}'
+                f'{PRIZE_SPECS[self.prize_code].label} phải có {expected_label} chữ số, nhận {self.number!r}'
             )
 
 

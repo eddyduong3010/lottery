@@ -70,8 +70,15 @@ WEEKDAY_LABELS = {
     6: 'Chủ Nhật',
 }
 
-DRAW_CUTOFF = time(16, 35)
+DRAW_CUTOFF = time(17, 15)
 PRIZE_RULES_EFFECTIVE_FROM = date(2017, 1, 1)
+HISTORICAL_SOURCE_GAPS = frozenset(
+    {
+        date(2008, 9, 2),
+        date(2008, 10, 26),
+        date(2011, 2, 3),
+    }
+)
 SOURCE_URL_TEMPLATE = 'https://xoso.com.vn/xsmn-{date:%d-%m-%Y}.html?amp=1'
 
 PRIZE_SPECS = {

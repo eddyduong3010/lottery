@@ -93,6 +93,32 @@ def test_special_prediction_ignores_other_stations_and_future_draws() -> None:
     pd.testing.assert_frame_equal(baseline, actual)
 
 
+def test_special_prediction_ignores_historical_five_digit_special_prizes() -> None:
+    results = sample_results()
+    baseline = generate_special_number_candidates(results, 'VL', date(2026, 7, 17), candidate_count=5)
+    with_historical_draw = pd.concat(
+        [
+            results,
+            pd.DataFrame(
+                [
+                    {
+                        'draw_date': '2005-12-29',
+                        'station_code': 'VL',
+                        'prize_code': 'db',
+                        'number': '12345',
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+
+    actual = generate_special_number_candidates(with_historical_draw, 'VL', date(2026, 7, 17), candidate_count=5)
+
+    pd.testing.assert_frame_equal(baseline, actual)
+    assert actual['number'].str.fullmatch(r'\d{6}').all()
+
+
 def test_special_prediction_validates_window_and_candidate_count() -> None:
     with pytest.raises(ValueError, match='Số lượng'):
         generate_special_number_candidates(sample_results(), 'VL', date(2026, 7, 17), candidate_count=0)

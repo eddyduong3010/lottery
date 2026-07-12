@@ -8,7 +8,14 @@ from cloudscraper import CloudScraper, create_scraper
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from .calendar import VIETNAM_TZ, stations_for_date
-from .config import PRIZE_DISPLAY_ORDER, SOURCE_URL_TEMPLATE, canonical_prize_code, station_from_name
+from .config import (
+    PRIZE_DISPLAY_ORDER,
+    PRIZE_RULES_EFFECTIVE_FROM,
+    PRIZE_SPECS,
+    SOURCE_URL_TEMPLATE,
+    canonical_prize_code,
+    station_from_name,
+)
 from .models import Draw, PrizeResult
 
 
@@ -50,7 +57,9 @@ def parse_xoso_com_html(draw_date: date, html: str, source_url: str = '') -> lis
         raise XSMNParseError(str(exc)) from exc
     expected_station_codes = set(stations_for_date(draw_date))
     actual_station_codes = {station.code for station in stations}
-    if actual_station_codes != expected_station_codes:
+    missing_station_codes = expected_station_codes - actual_station_codes
+    unexpected_station_codes = actual_station_codes - expected_station_codes
+    if missing_station_codes or (unexpected_station_codes and draw_date >= PRIZE_RULES_EFFECTIVE_FROM):
         missing = ', '.join(sorted(expected_station_codes - actual_station_codes)) or 'không'
         unexpected = ', '.join(sorted(actual_station_codes - expected_station_codes)) or 'không'
         raise XSMNParseError(
@@ -58,6 +67,7 @@ def parse_xoso_com_html(draw_date: date, html: str, source_url: str = '') -> lis
         )
 
     station_results: dict[str, list[PrizeResult]] = {station.code: [] for station in stations}
+    unavailable_station_codes: set[str] = set()
     seen_prizes: set[str] = set()
     body = table.find('tbody')
     rows = body.find_all('tr', recursive=False) if body else []
@@ -69,11 +79,15 @@ def parse_xoso_com_html(draw_date: date, html: str, source_url: str = '') -> lis
             prize_code = canonical_prize_code(heading.get_text(' ', strip=True))
         except ValueError:
             continue
+        if prize_code in seen_prizes:
+            continue
         cells = row.find_all('td', recursive=False)
         if len(cells) != len(stations):
             raise XSMNParseError(f'{prize_code}: số cột kết quả ({len(cells)}) khác số đài ({len(stations)})')
         seen_prizes.add(prize_code)
         for station, cell in zip(stations, cells, strict=True):
+            if station.code in unavailable_station_codes:
+                continue
             full_number_spans = [
                 span
                 for span in cell.find_all('span', class_='xs_prize1', recursive=False)
@@ -82,7 +96,20 @@ def parse_xoso_com_html(draw_date: date, html: str, source_url: str = '') -> lis
             numbers = [span.get_text('', strip=True) for span in full_number_spans]
             if not numbers:
                 raise XSMNParseError(f'{station.name} {prize_code}: không đọc được kết quả đầy đủ')
+            if any(not number.isascii() or not number.isdigit() for number in numbers):
+                unavailable_station_codes.add(station.code)
+                continue
+            expected_count = PRIZE_SPECS[prize_code].result_count
+            numbers = numbers[:expected_count]
             for ordinal, number in enumerate(numbers, start=1):
+                if draw_date < PRIZE_RULES_EFFECTIVE_FROM and number.isascii() and number.isdigit():
+                    expected_digits = PRIZE_SPECS[prize_code].digits
+                    if prize_code == 'db' and len(number) == 5:
+                        pass
+                    elif len(number) < expected_digits:
+                        number = number.zfill(expected_digits)
+                    elif len(number) > expected_digits:
+                        number = number[-expected_digits:]
                 try:
                     station_results[station.code].append(PrizeResult(prize_code, ordinal, number))
                 except ValueError as exc:
@@ -95,6 +122,8 @@ def parse_xoso_com_html(draw_date: date, html: str, source_url: str = '') -> lis
     fetched_at = datetime.now(VIETNAM_TZ)
     draws: list[Draw] = []
     for station in stations:
+        if station.code in unavailable_station_codes:
+            continue
         try:
             draws.append(
                 Draw(
@@ -108,6 +137,8 @@ def parse_xoso_com_html(draw_date: date, html: str, source_url: str = '') -> lis
             )
         except ValueError as exc:
             raise XSMNParseError(f'{station.name}: {exc}') from exc
+    if not draws:
+        raise XSMNParseError('Trang nguồn không có kết quả đầy đủ cho bất kỳ đài nào')
     return draws
 
 

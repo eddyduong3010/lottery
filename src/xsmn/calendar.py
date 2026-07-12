@@ -7,8 +7,16 @@ from .config import DRAW_CUTOFF, STATIONS, WEEKLY_SCHEDULE
 
 VIETNAM_TZ = ZoneInfo('Asia/Ho_Chi_Minh')
 
+# XSMN was suspended in these periods, so there is no result page to fetch.
+DRAW_SUSPENSIONS = (
+    (date(2020, 4, 1), date(2020, 4, 28)),
+    (date(2021, 7, 9), date(2021, 10, 21)),
+)
+
 
 def stations_for_date(selected_date: date) -> tuple[str, ...]:
+    if any(start <= selected_date <= end for start, end in DRAW_SUSPENSIONS):
+        return ()
     return WEEKLY_SCHEDULE[selected_date.weekday()]
 
 

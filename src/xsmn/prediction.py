@@ -103,6 +103,7 @@ def generate_special_number_candidates(
         return pd.DataFrame(columns=['number', 'model_score'])
     special['draw_date'] = pd.to_datetime(special['draw_date'])
     special = special[special['draw_date'] < pd.Timestamp(target_date)].copy()
+    special = special[special['number'].astype(str).str.len() == 6].copy()
     if special.empty:
         return pd.DataFrame(columns=['number', 'model_score'])
     special = special.sort_values(['draw_date', 'station_code'])

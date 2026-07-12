@@ -94,6 +94,23 @@ def test_parallel_xsmn_backfill_skips_complete_dates(tmp_path) -> None:
     assert repository.count_draws() == len(stations_for_date(first_date)) + len(stations_for_date(second_date))
 
 
+def test_parallel_xsmn_backfill_skips_known_incomplete_source_date(tmp_path) -> None:
+    selected_date = date(2008, 9, 2)
+    repository = XSMNRepository(tmp_path / 'xsmn-source-gap.sqlite3')
+    client = FakeXSMNClient(selected_date)
+
+    report = ingest_missing_range_parallel(
+        repository,
+        selected_date,
+        selected_date,
+        workers=4,
+        client_factory=lambda: client,
+    )
+
+    assert report.requested_days == 0
+    assert client.requested_dates == []
+
+
 def test_power_startup_sync_fetches_only_missing_draw_ids(tmp_path) -> None:
     repository = PowerRepository(tmp_path / 'power.sqlite3')
     draws = [

@@ -7,6 +7,7 @@ from threading import local
 from typing import Callable
 
 from .calendar import latest_available_date, stations_for_date
+from .config import HISTORICAL_SOURCE_GAPS
 from .repository import SQLiteRepository
 from .scraper import XosoComClient
 
@@ -63,7 +64,8 @@ def ingest_missing_range_parallel(
     missing_dates = [
         selected_date
         for selected_date in iter_dates(start_date, end_date)
-        if any((selected_date, station_code) not in existing for station_code in stations_for_date(selected_date))
+        if selected_date not in HISTORICAL_SOURCE_GAPS
+        and any((selected_date, station_code) not in existing for station_code in stations_for_date(selected_date))
     ]
     if not missing_dates:
         return IngestionReport(0, 0, ())
@@ -113,7 +115,8 @@ def sync_missing_results(
     missing_dates = [
         selected_date
         for selected_date in iter_dates(start_date, end_date)
-        if any((selected_date, station_code) not in existing for station_code in stations_for_date(selected_date))
+        if selected_date not in HISTORICAL_SOURCE_GAPS
+        and any((selected_date, station_code) not in existing for station_code in stations_for_date(selected_date))
     ]
     stored_draws = 0
     failures: list[tuple[date, str]] = []
