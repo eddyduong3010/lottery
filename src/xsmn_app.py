@@ -140,6 +140,14 @@ def require_authentication() -> stauth.Authenticate | None:
         cookie_expiry_days=7,
         auto_hash=False,
     )
+    if not st.session_state.get('authentication_status'):
+        try:
+            native_cookie = st.context.cookies.get('minh_lottery_auth')
+            if native_cookie:
+                authenticator.authentication_controller.login(token=native_cookie)
+        except Exception:
+            # Fall back to the component cookie reader used internally by streamlit-authenticator.
+            pass
     authenticator.login(
         location='main',
         max_login_attempts=5,
