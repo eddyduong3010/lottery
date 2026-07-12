@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit_authenticator as stauth
 
-from app_auth import verify_credentials
 from startup_sync import StartupSyncReport, sync_all_missing
 from vietlott_power655.analytics import frequency_statistics as power655_frequency_statistics
 from vietlott_power655.analytics import prize_probabilities as power655_prize_probabilities
@@ -97,53 +97,68 @@ def database_modified_ns(path: Path) -> int:
     return path.stat().st_mtime_ns if path.exists() else 0
 
 
-def auth_config() -> tuple[str, str]:
+def auth_config() -> tuple[str, str, str]:
     secret_username = ''
     secret_password_hash = ''
+    secret_cookie_key = ''
     try:
         auth_secrets = st.secrets.get('auth', {})
         secret_username = str(auth_secrets.get('username', ''))
         secret_password_hash = str(auth_secrets.get('password_hash', ''))
+        secret_cookie_key = str(auth_secrets.get('cookie_key', ''))
     except FileNotFoundError:
         pass
     return (
         os.environ.get('LOTTERY_AUTH_USERNAME', secret_username),
         os.environ.get('LOTTERY_AUTH_PASSWORD_HASH', secret_password_hash),
+        os.environ.get('LOTTERY_AUTH_COOKIE_KEY', secret_cookie_key),
     )
 
 
-def require_authentication() -> None:
+def require_authentication() -> stauth.Authenticate | None:
     if AUTH_DISABLED:
-        return
-    expected_username, password_hash = auth_config()
-    if st.session_state.get('lottery_authenticated'):
-        with st.sidebar:
-            st.caption(f'Đang đăng nhập: {expected_username}')
-            if st.button('Đăng xuất', width='stretch'):
-                st.session_state['lottery_authenticated'] = False
-                st.rerun()
-        return
+        return None
+    expected_username, password_hash, cookie_key = auth_config()
 
-    st.title('Đăng nhập hệ thống xổ số')
-    st.caption('Vui lòng đăng nhập để truy cập dữ liệu, thống kê và dự đoán.')
-    if not expected_username or not password_hash:
+    login_header = st.empty()
+    login_header.title('Đăng nhập hệ thống xổ số')
+    if not expected_username or not password_hash or not cookie_key:
         st.error('Máy chủ chưa cấu hình thông tin đăng nhập.')
         st.stop()
-    with st.form('lottery_login_form'):
-        submitted_username = st.text_input('Tài khoản')
-        submitted_password = st.text_input('Mật khẩu', type='password')
-        submitted = st.form_submit_button('Đăng nhập', type='primary', width='stretch')
-    if submitted:
-        if verify_credentials(submitted_username, submitted_password, expected_username, password_hash):
-            st.session_state['lottery_authenticated'] = True
-            st.session_state['lottery_login_failures'] = 0
-            st.rerun()
-        failures = int(st.session_state.get('lottery_login_failures', 0)) + 1
-        st.session_state['lottery_login_failures'] = failures
+    credentials = {
+        'usernames': {
+            expected_username: {
+                'name': expected_username,
+                'password': password_hash,
+            }
+        }
+    }
+    authenticator = stauth.Authenticate(
+        credentials,
+        cookie_name='minh_lottery_auth',
+        cookie_key=cookie_key,
+        cookie_expiry_days=7,
+        auto_hash=False,
+    )
+    authenticator.login(
+        location='main',
+        max_login_attempts=5,
+        clear_on_submit=True,
+        fields={
+            'Form name': 'Đăng nhập để tiếp tục',
+            'Username': 'Tài khoản',
+            'Password': 'Mật khẩu',
+            'Login': 'Đăng nhập',
+        },
+    )
+    authentication_status = st.session_state.get('authentication_status')
+    if authentication_status is False:
         st.error('Tài khoản hoặc mật khẩu không đúng.')
-        if failures >= 5:
-            st.warning('Đã đăng nhập sai nhiều lần. Hãy đóng tab và thử lại sau.')
-    st.stop()
+    if authentication_status is not True:
+        st.caption('Sau khi đăng nhập, trình duyệt sẽ được ghi nhớ trong 7 ngày.')
+        st.stop()
+    login_header.empty()
+    return authenticator
 
 
 def format_vnd(value: int) -> str:
@@ -238,7 +253,9 @@ def render_statistical_overview(
     )
 
 
-require_authentication()
+authenticator = require_authentication()
+if authenticator is not None:
+    authenticator.logout('Đăng xuất', location='sidebar', use_container_width=True)
 
 repository = get_repository(str(DATABASE_PATH))
 power655_repository = get_power655_repository(str(POWER655_DATABASE_PATH))
