@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 import streamlit_authenticator as stauth
 
+from prediction_history import prediction_performance_frame, update_prediction_history
 from startup_sync import StartupSyncReport, sync_all_missing
 from vietlott_power655.analytics import frequency_statistics as power655_frequency_statistics
 from vietlott_power655.analytics import prize_probabilities as power655_prize_probabilities
@@ -54,6 +55,9 @@ st.markdown(
 DATABASE_PATH = Path(os.environ.get('XSMN_DATABASE_PATH', ROOT / 'data' / 'xsmn.sqlite3'))
 POWER655_DATABASE_PATH = Path(
     os.environ.get('VIETLOTT_POWER655_DATABASE_PATH', ROOT / 'data' / 'vietlott_power655.sqlite3')
+)
+PREDICTION_HISTORY_PATH = Path(
+    os.environ.get('LOTTERY_PREDICTION_HISTORY_PATH', ROOT / 'data' / 'prediction_history.json')
 )
 AUTO_SYNC_ENABLED = os.environ.get('LOTTERY_AUTO_SYNC_ENABLED', '1').strip().lower() not in {'0', 'false', 'no'}
 AUTO_SYNC_TTL_SECONDS = max(int(os.environ.get('LOTTERY_AUTO_SYNC_TTL_SECONDS', '900')), 60)
@@ -181,6 +185,68 @@ def format_optional_vnd(value: int | None) -> str:
     if value is None:
         return 'Theo jackpot kỳ quay'
     return format_vnd(value)
+
+
+def render_prediction_performance(history: dict, game: str) -> None:
+    frame = prediction_performance_frame(history, game)
+    title = 'XSMN' if game == 'xsmn' else 'Power 6/55'
+    st.markdown(f'#### Nhật ký và hiệu suất dự đoán {title}')
+    if frame.empty:
+        st.info('Nhật ký sẽ bắt đầu lưu từ kỳ dự đoán kế tiếp.')
+        return
+
+    evaluated = frame[frame['evaluated']].copy()
+    metric_columns = st.columns(4)
+    metric_columns[0].metric('Kỳ đã lưu', len(frame))
+    metric_columns[1].metric('Kỳ đã đối chiếu', len(evaluated))
+    exact_hits = int(evaluated['exact_hit'].sum()) if not evaluated.empty else 0
+    exact_rate = exact_hits / len(evaluated) if len(evaluated) else 0.0
+    metric_columns[2].metric('Trúng chính xác', exact_hits, f'{exact_rate:.2%}', delta_color='off')
+    if game == 'xsmn':
+        average_match = evaluated['best_suffix_digits'].dropna().mean() if not evaluated.empty else 0.0
+        metric_columns[3].metric('Khớp đuôi tốt nhất TB', f'{average_match:.2f}/6 số')
+        display = frame.assign(
+            station=frame['station_code'].map(lambda code: STATIONS[code].name if code in STATIONS else code),
+            score=frame['best_suffix_digits'].map(lambda value: '' if pd.isna(value) else f'{int(value)}/6 số'),
+        )[['target_date', 'station', 'candidates', 'actual', 'best_candidate', 'score', 'model_version']].rename(
+            columns={
+                'target_date': 'Ngày quay',
+                'station': 'Đài',
+                'candidates': 'Các dãy đã dự đoán',
+                'actual': 'Kết quả thật',
+                'best_candidate': 'Dãy gần nhất',
+                'score': 'Mức khớp',
+                'model_version': 'Phiên bản mô hình',
+            }
+        )
+    else:
+        average_match = evaluated['best_main_matches'].dropna().mean() if not evaluated.empty else 0.0
+        metric_columns[3].metric('Số chính khớp tốt nhất TB', f'{average_match:.2f}/6 số')
+        display = frame.assign(
+            score=frame['best_main_matches'].map(lambda value: '' if pd.isna(value) else f'{int(value)}/6 số')
+        )[['target_date', 'candidates', 'actual', 'best_candidate', 'score', 'model_version']].rename(
+            columns={
+                'target_date': 'Ngày quay',
+                'candidates': 'Các bộ đã dự đoán',
+                'actual': 'Kết quả thật và số đặc biệt',
+                'best_candidate': 'Bộ gần nhất',
+                'score': 'Số chính khớp',
+                'model_version': 'Phiên bản mô hình',
+            }
+        )
+    display['Ngày quay'] = pd.to_datetime(display['Ngày quay']).dt.strftime('%d-%m-%Y')
+    st.dataframe(display.head(50), hide_index=True, width='stretch')
+    st.download_button(
+        'Tải nhật ký CSV',
+        data=display.to_csv(index=False).encode('utf-8-sig'),
+        file_name=f'prediction-history-{game}.csv',
+        mime='text/csv',
+        key=f'download_prediction_history_{game}',
+    )
+    st.caption(
+        'Hiệu suất chỉ được tính trên các dự đoán đã lưu trước thời điểm có kết quả. '
+        'Nhật ký giúp so sánh các phiên bản mô hình; không làm thay đổi xác suất toán học của xổ số.'
+    )
 
 
 def draw_result_table(draw) -> pd.DataFrame:
@@ -325,6 +391,16 @@ with st.sidebar:
 
 results = load_results(str(DATABASE_PATH), database_modified_ns(DATABASE_PATH))
 power655_draws = load_power655_draws(str(POWER655_DATABASE_PATH), database_modified_ns(POWER655_DATABASE_PATH))
+try:
+    prediction_history = update_prediction_history(
+        PREDICTION_HISTORY_PATH,
+        results,
+        power655_draws,
+    )
+    prediction_history_error = ''
+except (OSError, ValueError) as exc:
+    prediction_history = {'schema_version': 1, 'predictions': []}
+    prediction_history_error = str(exc)
 first_date, last_date = repository.date_bounds()
 power655_first_date, power655_last_date = power655_repository.date_bounds()
 
@@ -633,6 +709,10 @@ with tabs[4]:
                 'mỗi thành phần được chuẩn hóa min–max về thang 0–100. '
                 'Dãy 6 số dùng tần suất chữ số theo từng vị trí và làm trơn Laplace; không phải xác suất trúng.'
             )
+    st.divider()
+    if prediction_history_error:
+        st.warning(f'Chưa ghi được nhật ký dự đoán: {prediction_history_error}')
+    render_prediction_performance(prediction_history, 'xsmn')
 with tabs[5]:
     st.subheader('Vietlott Power 6/55')
     st.caption('Sản phẩm 6/55 của Vietlott là Power 6/55: quay 6 số chính từ 01-55 và 1 số đặc biệt.')
@@ -883,3 +963,7 @@ with tabs[5]:
                         f'Điểm {candidate.model_score:.1f}/100 · XS Jackpot 1: 0,00000345%',
                         delta_color='off',
                     )
+            st.divider()
+            if prediction_history_error:
+                st.warning(f'Chưa ghi được nhật ký dự đoán: {prediction_history_error}')
+            render_prediction_performance(prediction_history, 'power655')

@@ -15,6 +15,7 @@ APP_PATH = Path(__file__).resolve().parents[1] / 'src' / 'xsmn_app.py'
 def test_streamlit_app_requires_valid_login(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv('XSMN_DATABASE_PATH', str(tmp_path / 'xsmn.sqlite3'))
     monkeypatch.setenv('VIETLOTT_POWER655_DATABASE_PATH', str(tmp_path / 'power.sqlite3'))
+    monkeypatch.setenv('LOTTERY_PREDICTION_HISTORY_PATH', str(tmp_path / 'prediction-history.json'))
     monkeypatch.setenv('LOTTERY_AUTO_SYNC_ENABLED', '0')
     monkeypatch.setenv('LOTTERY_AUTH_DISABLED', '0')
     monkeypatch.setenv('LOTTERY_AUTH_USERNAME', 'minh')
@@ -40,6 +41,7 @@ def test_streamlit_app_handles_empty_database(tmp_path, monkeypatch) -> None:
     database_path = tmp_path / 'empty-xsmn-app.sqlite3'
     monkeypatch.setenv('XSMN_DATABASE_PATH', str(database_path))
     monkeypatch.setenv('VIETLOTT_POWER655_DATABASE_PATH', str(tmp_path / 'empty-power655-app.sqlite3'))
+    monkeypatch.setenv('LOTTERY_PREDICTION_HISTORY_PATH', str(tmp_path / 'prediction-history.json'))
     monkeypatch.setenv('LOTTERY_AUTO_SYNC_ENABLED', '0')
     monkeypatch.setenv('LOTTERY_AUTH_DISABLED', '1')
 
@@ -57,6 +59,7 @@ def test_streamlit_app_renders_chart_and_tables(tmp_path, monkeypatch) -> None:
         repository.upsert_draw(replace(make_draw(), draw_date=selected_date))
     monkeypatch.setenv('XSMN_DATABASE_PATH', str(database_path))
     monkeypatch.setenv('VIETLOTT_POWER655_DATABASE_PATH', str(tmp_path / 'power655-app-test.sqlite3'))
+    monkeypatch.setenv('LOTTERY_PREDICTION_HISTORY_PATH', str(tmp_path / 'prediction-history.json'))
     monkeypatch.setenv('LOTTERY_AUTO_SYNC_ENABLED', '0')
     monkeypatch.setenv('LOTTERY_AUTH_DISABLED', '1')
 

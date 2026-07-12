@@ -1,0 +1,153 @@
+{
+  "predictions": [
+    {
+      "candidates": [
+        {
+          "model_score": 100.0,
+          "rank": 1,
+          "value": "208344"
+        },
+        {
+          "model_score": 91.7,
+          "rank": 2,
+          "value": "676674"
+        },
+        {
+          "model_score": 89.7,
+          "rank": 3,
+          "value": "741708"
+        },
+        {
+          "model_score": 84.7,
+          "rank": 4,
+          "value": "799000"
+        },
+        {
+          "model_score": 68.2,
+          "rank": 5,
+          "value": "914198"
+        }
+      ],
+      "created_at": "2026-07-12T17:14:11.199866+07:00",
+      "game": "xsmn",
+      "id": "xsmn:2026-07-13:CM:transparent-blend-v1",
+      "model_version": "transparent-blend-v1",
+      "recent_draws": 30,
+      "station_code": "CM",
+      "target_date": "2026-07-13",
+      "training_cutoff": "2026-07-06"
+    },
+    {
+      "candidates": [
+        {
+          "model_score": 100.0,
+          "rank": 1,
+          "value": "806060"
+        },
+        {
+          "model_score": 74.2,
+          "rank": 2,
+          "value": "388561"
+        },
+        {
+          "model_score": 73.5,
+          "rank": 3,
+          "value": "741482"
+        },
+        {
+          "model_score": 64.2,
+          "rank": 4,
+          "value": "523243"
+        },
+        {
+          "model_score": 52.3,
+          "rank": 5,
+          "value": "317940"
+        }
+      ],
+      "created_at": "2026-07-12T17:14:11.199866+07:00",
+      "game": "xsmn",
+      "id": "xsmn:2026-07-13:DT:transparent-blend-v1",
+      "model_version": "transparent-blend-v1",
+      "recent_draws": 30,
+      "station_code": "DT",
+      "target_date": "2026-07-13",
+      "training_cutoff": "2026-07-06"
+    },
+    {
+      "candidates": [
+        {
+          "model_score": 100.0,
+          "rank": 1,
+          "value": "442301"
+        },
+        {
+          "model_score": 92.5,
+          "rank": 2,
+          "value": "972388"
+        },
+        {
+          "model_score": 91.8,
+          "rank": 3,
+          "value": "229508"
+        },
+        {
+          "model_score": 77.9,
+          "rank": 4,
+          "value": "744048"
+        },
+        {
+          "model_score": 76.5,
+          "rank": 5,
+          "value": "714232"
+        }
+      ],
+      "created_at": "2026-07-12T17:14:11.199866+07:00",
+      "game": "xsmn",
+      "id": "xsmn:2026-07-13:HCM:transparent-blend-v1",
+      "model_version": "transparent-blend-v1",
+      "recent_draws": 30,
+      "station_code": "HCM",
+      "target_date": "2026-07-13",
+      "training_cutoff": "2026-07-11"
+    },
+    {
+      "candidates": [
+        {
+          "model_score": 100.0,
+          "rank": 1,
+          "value": "15 24 26 28 32 53"
+        },
+        {
+          "model_score": 97.7,
+          "rank": 2,
+          "value": "11 15 17 32 38 50"
+        },
+        {
+          "model_score": 96.3,
+          "rank": 3,
+          "value": "02 03 20 25 26 44"
+        },
+        {
+          "model_score": 85.2,
+          "rank": 4,
+          "value": "17 19 21 27 28 49"
+        },
+        {
+          "model_score": 84.5,
+          "rank": 5,
+          "value": "05 18 21 27 30 52"
+        }
+      ],
+      "created_at": "2026-07-12T17:14:11.199866+07:00",
+      "game": "power655",
+      "id": "power655:2026-07-14:-:power655-transparent-blend-v1",
+      "model_version": "power655-transparent-blend-v1",
+      "recent_draws": 30,
+      "station_code": "",
+      "target_date": "2026-07-14",
+      "training_cutoff": "2026-07-11"
+    }
+  ],
+  "schema_version": 1
+}

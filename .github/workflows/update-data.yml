@@ -1,13 +1,16 @@
 name: Update data
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: 35 11 * * * # 6:35 PM in Vietnam
+    - cron: 0 12 * * * # 7:00 PM in Vietnam
 
 jobs:
   update-data:
-    if: github.repository_owner == 'khiemdoan'
+    if: github.repository_owner == 'eddyduong3010'
     runs-on: ubuntu-slim
     steps:
       - name: Checkout repo content
@@ -24,18 +27,29 @@ jobs:
       - name: Fetch data
         run: uv run src/fetch.py
 
+      - name: Fetch recent XSMN results
+        continue-on-error: true
+        run: uv run src/fetch_xsmn.py --days 60 --workers 12
+
+      - name: Fetch recent Power 6/55 results
+        continue-on-error: true
+        run: uv run src/fetch_vietlott_power655.py --limit 20 --skip-details
+
+      - name: Save and evaluate predictions
+        run: uv run src/update_prediction_history.py
+
       - name: Analyze data
         run: uv run src/analyze.py
 
       - name: Commit changes
         run: |
-          if git diff --quiet; then
+          git add data/*.csv data/*.json data/*.parquet
+          if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
 
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
-          git add .
-          git commit -m "Updated $(date +'%Y-%m-%d')"
+          git commit -m "Update lottery data and prediction history $(date +'%Y-%m-%d')"
           git push origin main
