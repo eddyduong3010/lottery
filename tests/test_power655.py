@@ -2,12 +2,12 @@ from datetime import date
 
 import pytest
 
-from vietlott_power655.analytics import frequency_statistics
+from vietlott_power655.analytics import frequency_statistics, prize_probabilities
 from vietlott_power655.models import Power655Draw, PrizeTierResult
 from vietlott_power655.prediction import generate_ticket_candidates
 from vietlott_power655.prize_checker import check_ticket, parse_ticket_numbers
 from vietlott_power655.repository import SQLiteRepository
-from vietlott_power655.scraper import parse_detail_html, parse_history_html
+from vietlott_power655.scraper import VietlottPower655Client, parse_detail_html, parse_history_html
 
 
 def make_power_draw(draw_id: str = '01370') -> Power655Draw:
@@ -78,6 +78,24 @@ def test_parse_power655_history_html() -> None:
     assert draws[0].bonus_number == '40'
 
 
+def test_parse_power655_ajax_fragment_and_metadata() -> None:
+    html = """
+    <script>AjaxOut = X.ServerSideDrawResult(RenderInfo, 'history-key', '', [], false, 0);</script>
+    <select id="drpSelectGameDraw"><option value="">Toàn bộ</option><option value="a">Kỳ 2</option>
+    <option value="b">Kỳ 1</option></select>
+    <table><tbody><tr>
+      <td>11/07/2026</td><td><a href="/655?id=01370">01370</a></td>
+      <td><span class="bong_tron">09</span><span class="bong_tron">17</span>
+      <span class="bong_tron">20</span><span class="bong_tron">33</span>
+      <span class="bong_tron">41</span><span class="bong_tron">42</span>
+      <span class="bong_tron">40</span></td>
+    </tr></tbody></table>
+    """
+    assert VietlottPower655Client._history_key(html) == 'history-key'
+    assert VietlottPower655Client._history_draw_count(html) == 2
+    assert parse_history_html(html)[0].draw_id == '01370'
+
+
 def test_parse_power655_detail_html_with_prizes() -> None:
     html = """
     <div class="chitietketqua_title"><h5>Kỳ quay thưởng <b>#01370</b> ngày <b>11/07/2026</b></h5></div>
@@ -110,6 +128,36 @@ def test_power655_repository_roundtrip(tmp_path) -> None:
     assert loaded is not None
     assert loaded.main_numbers[0] == '09'
     assert len(repository.load_draws()) == 1
+
+
+def test_bulk_history_does_not_overwrite_existing_prize_details(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / 'power655.sqlite3')
+    detailed = make_power_draw()
+    repository.upsert_draw(detailed)
+    history_only = Power655Draw(
+        draw_id=detailed.draw_id,
+        draw_date=detailed.draw_date,
+        main_numbers=detailed.main_numbers,
+        bonus_number=detailed.bonus_number,
+        prizes=tuple(
+            PrizeTierResult(prize.tier_code, None, prize.payout_vnd if prize.tier_code != 'jackpot1' else None)
+            for prize in detailed.prizes
+        ),
+        source_url=detailed.source_url,
+    )
+    repository.upsert_draw(history_only)
+
+    loaded = repository.get_draw(detailed.draw_id)
+    assert loaded is not None
+    assert loaded.prizes[0].winner_count == 1
+    assert loaded.prizes[0].payout_vnd == 102_862_626_150
+
+
+def test_power655_theoretical_probabilities() -> None:
+    probabilities = prize_probabilities().set_index('prize')
+    assert probabilities.loc['Jackpot 1', 'odds_one_in'] == 28_989_675
+    assert probabilities.loc['Jackpot 2', 'winning_combinations'] == 6
+    assert probabilities.loc['Bất kỳ giải nào', 'probability'] > probabilities.loc['Giải Ba', 'probability']
 
 
 def test_power655_analytics_and_prediction_do_not_mutate_draws(tmp_path) -> None:

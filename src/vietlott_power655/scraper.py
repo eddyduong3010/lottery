@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import re
+import time
+from collections.abc import Callable
 from datetime import date, datetime
+from math import ceil
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -9,7 +12,16 @@ from cloudscraper import CloudScraper, create_scraper
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from .calendar import VIETNAM_TZ
-from .config import DETAIL_URL_TEMPLATE, HISTORY_URL, PRIZE_DISPLAY_ORDER, PRIZE_SPECS, canonical_tier_code
+from .config import (
+    AJAX_HISTORY_URL,
+    AJAX_RENDER_INFO_URL,
+    DETAIL_URL_TEMPLATE,
+    HISTORY_URL,
+    PRIZE_DISPLAY_ORDER,
+    PRIZE_SPECS,
+    SITE_ID,
+    canonical_tier_code,
+)
 from .models import Power655Draw, PrizeTierResult
 
 
@@ -32,7 +44,7 @@ def _default_prizes() -> tuple[PrizeTierResult, ...]:
 
 def parse_history_html(html: str, source_url: str = HISTORY_URL) -> list[Power655Draw]:
     soup = BeautifulSoup(html, 'lxml')
-    rows = soup.select('#divResultContent tbody tr')
+    rows = soup.select('#divResultContent tbody tr') or soup.select('table tbody tr')
     if not rows:
         raise VietlottParseError('Không tìm thấy bảng lịch sử Power 6/55')
     fetched_at = datetime.now(VIETNAM_TZ)
@@ -141,8 +153,120 @@ class VietlottPower655Client:
             raise VietlottSourceError(f'Nguồn dữ liệu trả về HTTP {response.status_code}: {url}')
         return response.text
 
+    @retry(
+        retry=retry_if_exception_type((OSError, VietlottSourceError)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
+        reraise=True,
+    )
+    def _post_ajax(self, url: str, method: str, payload: dict[str, object]) -> dict[str, object]:
+        headers = {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Referer': HISTORY_URL,
+            'X-AjaxPro-Method': method,
+            'X-Requested-With': 'XMLHttpRequest',
+        }
+        try:
+            response = self._http.post(url, json=payload, headers=headers, timeout=self._timeout_seconds)
+        except OSError:
+            raise
+        except Exception as exc:
+            raise VietlottSourceError(f'Lỗi kết nối tới API Vietlott: {exc}') from exc
+        if response.status_code != 200:
+            raise VietlottSourceError(f'API Vietlott trả về HTTP {response.status_code}: {url}')
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise VietlottSourceError('API Vietlott không trả về JSON hợp lệ') from exc
+        if not isinstance(body, dict) or 'value' not in body:
+            raise VietlottSourceError('Phản hồi API Vietlott thiếu trường value')
+        value = body['value']
+        if not isinstance(value, dict):
+            raise VietlottSourceError('Phản hồi API Vietlott có cấu trúc không hợp lệ')
+        return value
+
+    def _create_render_info(self) -> dict[str, object]:
+        value = self._post_ajax(
+            AJAX_RENDER_INFO_URL,
+            'ServerSideFrontEndCreateRenderInfo',
+            {'SiteId': SITE_ID},
+        )
+        value['SiteLang'] = 'vi'
+        return value
+
+    @staticmethod
+    def _history_key(html: str) -> str:
+        match = re.search(r"ServerSideDrawResult\(RenderInfo,\s*'([^']+)'", html)
+        if match is None:
+            raise VietlottParseError('Không tìm thấy khóa phân trang lịch sử Power 6/55')
+        return match.group(1)
+
+    @staticmethod
+    def _history_draw_count(html: str) -> int:
+        soup = BeautifulSoup(html, 'lxml')
+        return max(0, len(soup.select('#drpSelectGameDraw option[value]')) - 1)
+
+    def fetch_history_page(
+        self,
+        page_index: int,
+        render_info: dict[str, object],
+        history_key: str,
+    ) -> list[Power655Draw]:
+        empty_row = [''] * 18
+        value = self._post_ajax(
+            AJAX_HISTORY_URL,
+            'ServerSideDrawResult',
+            {
+                'ORenderInfo': render_info,
+                'Key': history_key,
+                'GameDrawId': '',
+                'ArrayNumbers': [empty_row.copy() for _ in range(5)],
+                'CheckMulti': False,
+                'PageIndex': page_index,
+            },
+        )
+        if value.get('Error'):
+            raise VietlottSourceError(str(value.get('InfoMessage') or 'API phân trang Vietlott báo lỗi'))
+        fragment = value.get('HtmlContent')
+        if not isinstance(fragment, str) or not fragment.strip():
+            return []
+        return parse_history_html(fragment, HISTORY_URL)
+
     def fetch_history(self) -> list[Power655Draw]:
         return parse_history_html(self._get_text(HISTORY_URL), HISTORY_URL)
+
+    def fetch_all_draws(
+        self,
+        request_delay_seconds: float = 0.05,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> list[Power655Draw]:
+        """Fetch every public Power 6/55 draw using Vietlott's Ajax pagination."""
+        history_html = self._get_text(HISTORY_URL)
+        first_page = parse_history_html(history_html, HISTORY_URL)
+        expected_count = max(self._history_draw_count(history_html), len(first_page))
+        page_size = len(first_page)
+        total_pages = ceil(expected_count / page_size)
+        history_key = self._history_key(history_html)
+        render_info = self._create_render_info()
+        draws_by_id = {draw.draw_id: draw for draw in first_page}
+        if progress:
+            progress(1, total_pages)
+        for page_index in range(1, total_pages):
+            if request_delay_seconds > 0:
+                time.sleep(request_delay_seconds)
+            page_draws = self.fetch_history_page(page_index, render_info, history_key)
+            if not page_draws:
+                raise VietlottSourceError(f'Trang lịch sử {page_index + 1}/{total_pages} không có dữ liệu')
+            for draw in page_draws:
+                draws_by_id[draw.draw_id] = draw
+            if progress:
+                progress(page_index + 1, total_pages)
+        draws = sorted(draws_by_id.values(), key=lambda draw: (draw.draw_date, int(draw.draw_id)))
+        if len(draws) != expected_count:
+            raise VietlottSourceError(
+                f'Lịch sử không đầy đủ: Vietlott công bố {expected_count} kỳ nhưng chỉ tải được {len(draws)} kỳ'
+            )
+        return draws
 
     def fetch_detail(self, draw_id: str) -> Power655Draw:
         url = DETAIL_URL_TEMPLATE.format(draw_id=draw_id)

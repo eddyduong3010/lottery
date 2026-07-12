@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Callable
 
+from .calendar import latest_available_date, stations_for_date
 from .repository import SQLiteRepository
 from .scraper import XosoComClient
 
@@ -42,3 +43,29 @@ def ingest_range(
         except Exception as exc:
             failures.append((selected_date, str(exc)))
     return IngestionReport(len(dates), stored_draws, tuple(failures))
+
+
+def sync_missing_results(
+    repository: SQLiteRepository,
+    client: XosoComClient,
+    bootstrap_days: int = 30,
+) -> IngestionReport:
+    """Fill missing draw dates within the local coverage window through the latest complete day."""
+    end_date = latest_available_date()
+    first_date, _ = repository.date_bounds()
+    coverage_start = end_date - timedelta(days=max(bootstrap_days, 1) - 1)
+    start_date = max(first_date, coverage_start) if first_date else coverage_start
+    existing = repository.draw_keys(start_date, end_date)
+    missing_dates = [
+        selected_date
+        for selected_date in iter_dates(start_date, end_date)
+        if any((selected_date, station_code) not in existing for station_code in stations_for_date(selected_date))
+    ]
+    stored_draws = 0
+    failures: list[tuple[date, str]] = []
+    for selected_date in missing_dates:
+        try:
+            stored_draws += repository.upsert_draws(client.fetch_date(selected_date))
+        except Exception as exc:
+            failures.append((selected_date, str(exc)))
+    return IngestionReport(len(missing_dates), stored_draws, tuple(failures))

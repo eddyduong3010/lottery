@@ -135,3 +135,4 @@ data/xsmn.sqlite3*
 data/vietlott_power655.sqlite3*
 .uv-cache/
 .uv-python/
+.streamlit/secrets.toml
