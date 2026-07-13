@@ -1,6 +1,48 @@
 {
   "predictions": [
     {
+      "actual": {
+        "evaluated_at": "2026-07-13T21:30:02.545317+07:00",
+        "prize_results": {
+          "db": [
+            "303404"
+          ],
+          "g1": [
+            "90382"
+          ],
+          "g2": [
+            "93956"
+          ],
+          "g3": [
+            "15667",
+            "06530"
+          ],
+          "g4": [
+            "27175",
+            "90925",
+            "66397",
+            "63591",
+            "36897",
+            "04437",
+            "39300"
+          ],
+          "g5": [
+            "8357"
+          ],
+          "g6": [
+            "9069",
+            "9501",
+            "4841"
+          ],
+          "g7": [
+            "874"
+          ],
+          "g8": [
+            "70"
+          ]
+        },
+        "special_number": "303404"
+      },
       "candidates": [
         {
           "model_score": 100.0,
@@ -11,6 +53,15 @@
       "created_at": "2026-07-12T17:14:11.199866+07:00",
       "game": "xsmn",
       "id": "xsmn:2026-07-13:CM:transparent-blend-v1",
+      "metrics": {
+        "best_candidate": "208344",
+        "best_suffix_digits": 1,
+        "exact_hit": false,
+        "hit_prize_codes": [],
+        "prize_hit_rate": 0.0,
+        "prize_hits": 0,
+        "prize_total": 18
+      },
       "model_version": "transparent-blend-v1",
       "prize_model_version": "full-prize-positional-v1",
       "prize_predictions": [
@@ -129,6 +180,48 @@
       "training_cutoff": "2026-07-06"
     },
     {
+      "actual": {
+        "evaluated_at": "2026-07-13T21:30:02.545317+07:00",
+        "prize_results": {
+          "db": [
+            "439097"
+          ],
+          "g1": [
+            "10472"
+          ],
+          "g2": [
+            "47597"
+          ],
+          "g3": [
+            "13182",
+            "13302"
+          ],
+          "g4": [
+            "93536",
+            "92699",
+            "52930",
+            "41349",
+            "60250",
+            "89452",
+            "33980"
+          ],
+          "g5": [
+            "8451"
+          ],
+          "g6": [
+            "5538",
+            "3369",
+            "6966"
+          ],
+          "g7": [
+            "032"
+          ],
+          "g8": [
+            "04"
+          ]
+        },
+        "special_number": "439097"
+      },
       "candidates": [
         {
           "model_score": 100.0,
@@ -139,6 +232,15 @@
       "created_at": "2026-07-12T17:14:11.199866+07:00",
       "game": "xsmn",
       "id": "xsmn:2026-07-13:DT:transparent-blend-v1",
+      "metrics": {
+        "best_candidate": "806060",
+        "best_suffix_digits": 0,
+        "exact_hit": false,
+        "hit_prize_codes": [],
+        "prize_hit_rate": 0.0,
+        "prize_hits": 0,
+        "prize_total": 18
+      },
       "model_version": "transparent-blend-v1",
       "prize_model_version": "full-prize-positional-v1",
       "prize_predictions": [
@@ -257,6 +359,48 @@
       "training_cutoff": "2026-07-06"
     },
     {
+      "actual": {
+        "evaluated_at": "2026-07-13T21:30:02.545317+07:00",
+        "prize_results": {
+          "db": [
+            "256022"
+          ],
+          "g1": [
+            "76748"
+          ],
+          "g2": [
+            "64476"
+          ],
+          "g3": [
+            "04976",
+            "02576"
+          ],
+          "g4": [
+            "90043",
+            "55833",
+            "67619",
+            "06219",
+            "77996",
+            "86006",
+            "13613"
+          ],
+          "g5": [
+            "7645"
+          ],
+          "g6": [
+            "3498",
+            "1040",
+            "1591"
+          ],
+          "g7": [
+            "053"
+          ],
+          "g8": [
+            "16"
+          ]
+        },
+        "special_number": "256022"
+      },
       "candidates": [
         {
           "model_score": 100.0,
@@ -267,6 +411,15 @@
       "created_at": "2026-07-12T17:14:11.199866+07:00",
       "game": "xsmn",
       "id": "xsmn:2026-07-13:HCM:transparent-blend-v1",
+      "metrics": {
+        "best_candidate": "442301",
+        "best_suffix_digits": 0,
+        "exact_hit": false,
+        "hit_prize_codes": [],
+        "prize_hit_rate": 0.0,
+        "prize_hits": 0,
+        "prize_total": 18
+      },
       "model_version": "transparent-blend-v1",
       "prize_model_version": "full-prize-positional-v1",
       "prize_predictions": [
@@ -2068,6 +2221,134 @@
     {
       "candidates": [
         {
+          "model_score": 37.3,
+          "rank": 1,
+          "value": "904182"
+        }
+      ],
+      "created_at": "2026-07-13T21:30:02.545317+07:00",
+      "game": "xsmn",
+      "id": "xsmn:2026-07-18:HCM:full-prize-positional-v1",
+      "model_version": "full-prize-positional-v1",
+      "prize_model_version": "full-prize-positional-v1",
+      "prize_predictions": [
+        {
+          "model_score": 83.4,
+          "number": "28",
+          "ordinal": 1,
+          "prize_code": "g8"
+        },
+        {
+          "model_score": 67.1,
+          "number": "115",
+          "ordinal": 1,
+          "prize_code": "g7"
+        },
+        {
+          "model_score": 82.5,
+          "number": "5000",
+          "ordinal": 1,
+          "prize_code": "g6"
+        },
+        {
+          "model_score": 67.3,
+          "number": "8248",
+          "ordinal": 2,
+          "prize_code": "g6"
+        },
+        {
+          "model_score": 81.8,
+          "number": "9716",
+          "ordinal": 3,
+          "prize_code": "g6"
+        },
+        {
+          "model_score": 77.3,
+          "number": "5509",
+          "ordinal": 1,
+          "prize_code": "g5"
+        },
+        {
+          "model_score": 77.1,
+          "number": "13984",
+          "ordinal": 1,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 81.0,
+          "number": "20398",
+          "ordinal": 2,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 78.4,
+          "number": "31530",
+          "ordinal": 3,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 77.2,
+          "number": "39879",
+          "ordinal": 4,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 83.8,
+          "number": "42316",
+          "ordinal": 5,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 76.5,
+          "number": "74683",
+          "ordinal": 6,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 86.6,
+          "number": "97413",
+          "ordinal": 7,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 66.9,
+          "number": "10047",
+          "ordinal": 1,
+          "prize_code": "g3"
+        },
+        {
+          "model_score": 75.7,
+          "number": "82257",
+          "ordinal": 2,
+          "prize_code": "g3"
+        },
+        {
+          "model_score": 67.6,
+          "number": "90504",
+          "ordinal": 1,
+          "prize_code": "g2"
+        },
+        {
+          "model_score": 52.3,
+          "number": "35636",
+          "ordinal": 1,
+          "prize_code": "g1"
+        },
+        {
+          "model_score": 37.3,
+          "number": "904182",
+          "ordinal": 1,
+          "prize_code": "db"
+        }
+      ],
+      "recent_draws": 30,
+      "station_code": "HCM",
+      "target_date": "2026-07-18",
+      "training_cutoff": "2026-07-13"
+    },
+    {
+      "candidates": [
+        {
           "model_score": 100.0,
           "rank": 1,
           "value": "686152"
@@ -2704,6 +2985,262 @@
       "station_code": "TG",
       "target_date": "2026-07-19",
       "training_cutoff": "2026-07-12"
+    },
+    {
+      "candidates": [
+        {
+          "model_score": 39.8,
+          "rank": 1,
+          "value": "083366"
+        }
+      ],
+      "created_at": "2026-07-13T21:30:02.545317+07:00",
+      "game": "xsmn",
+      "id": "xsmn:2026-07-20:CM:full-prize-positional-v1",
+      "model_version": "full-prize-positional-v1",
+      "prize_model_version": "full-prize-positional-v1",
+      "prize_predictions": [
+        {
+          "model_score": 90.6,
+          "number": "90",
+          "ordinal": 1,
+          "prize_code": "g8"
+        },
+        {
+          "model_score": 53.1,
+          "number": "622",
+          "ordinal": 1,
+          "prize_code": "g7"
+        },
+        {
+          "model_score": 53.9,
+          "number": "4057",
+          "ordinal": 1,
+          "prize_code": "g6"
+        },
+        {
+          "model_score": 76.8,
+          "number": "7390",
+          "ordinal": 2,
+          "prize_code": "g6"
+        },
+        {
+          "model_score": 71.6,
+          "number": "8654",
+          "ordinal": 3,
+          "prize_code": "g6"
+        },
+        {
+          "model_score": 72.9,
+          "number": "6765",
+          "ordinal": 1,
+          "prize_code": "g5"
+        },
+        {
+          "model_score": 71.7,
+          "number": "04705",
+          "ordinal": 1,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 66.8,
+          "number": "31638",
+          "ordinal": 2,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 73.8,
+          "number": "42987",
+          "ordinal": 3,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 78.7,
+          "number": "52060",
+          "ordinal": 4,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 76.6,
+          "number": "55053",
+          "ordinal": 5,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 79.4,
+          "number": "78255",
+          "ordinal": 6,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 67.4,
+          "number": "95457",
+          "ordinal": 7,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 53.2,
+          "number": "14252",
+          "ordinal": 1,
+          "prize_code": "g3"
+        },
+        {
+          "model_score": 65.2,
+          "number": "97761",
+          "ordinal": 2,
+          "prize_code": "g3"
+        },
+        {
+          "model_score": 54.6,
+          "number": "59757",
+          "ordinal": 1,
+          "prize_code": "g2"
+        },
+        {
+          "model_score": 40.1,
+          "number": "25695",
+          "ordinal": 1,
+          "prize_code": "g1"
+        },
+        {
+          "model_score": 39.8,
+          "number": "083366",
+          "ordinal": 1,
+          "prize_code": "db"
+        }
+      ],
+      "recent_draws": 30,
+      "station_code": "CM",
+      "target_date": "2026-07-20",
+      "training_cutoff": "2026-07-13"
+    },
+    {
+      "candidates": [
+        {
+          "model_score": 32.0,
+          "rank": 1,
+          "value": "412577"
+        }
+      ],
+      "created_at": "2026-07-13T21:30:02.545317+07:00",
+      "game": "xsmn",
+      "id": "xsmn:2026-07-20:DT:full-prize-positional-v1",
+      "model_version": "full-prize-positional-v1",
+      "prize_model_version": "full-prize-positional-v1",
+      "prize_predictions": [
+        {
+          "model_score": 83.6,
+          "number": "03",
+          "ordinal": 1,
+          "prize_code": "g8"
+        },
+        {
+          "model_score": 58.1,
+          "number": "139",
+          "ordinal": 1,
+          "prize_code": "g7"
+        },
+        {
+          "model_score": 73.9,
+          "number": "2937",
+          "ordinal": 1,
+          "prize_code": "g6"
+        },
+        {
+          "model_score": 70.6,
+          "number": "7642",
+          "ordinal": 2,
+          "prize_code": "g6"
+        },
+        {
+          "model_score": 78.4,
+          "number": "8710",
+          "ordinal": 3,
+          "prize_code": "g6"
+        },
+        {
+          "model_score": 30.7,
+          "number": "2733",
+          "ordinal": 1,
+          "prize_code": "g5"
+        },
+        {
+          "model_score": 78.5,
+          "number": "12805",
+          "ordinal": 1,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 74.8,
+          "number": "16844",
+          "ordinal": 2,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 72.6,
+          "number": "31475",
+          "ordinal": 3,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 84.2,
+          "number": "41501",
+          "ordinal": 4,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 75.9,
+          "number": "46752",
+          "ordinal": 5,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 78.1,
+          "number": "58771",
+          "ordinal": 6,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 72.3,
+          "number": "84043",
+          "ordinal": 7,
+          "prize_code": "g4"
+        },
+        {
+          "model_score": 59.8,
+          "number": "28901",
+          "ordinal": 1,
+          "prize_code": "g3"
+        },
+        {
+          "model_score": 65.2,
+          "number": "66579",
+          "ordinal": 2,
+          "prize_code": "g3"
+        },
+        {
+          "model_score": 51.6,
+          "number": "90957",
+          "ordinal": 1,
+          "prize_code": "g2"
+        },
+        {
+          "model_score": 47.9,
+          "number": "82558",
+          "ordinal": 1,
+          "prize_code": "g1"
+        },
+        {
+          "model_score": 32.0,
+          "number": "412577",
+          "ordinal": 1,
+          "prize_code": "db"
+        }
+      ],
+      "recent_draws": 30,
+      "station_code": "DT",
+      "target_date": "2026-07-20",
+      "training_cutoff": "2026-07-13"
     }
   ],
   "schema_version": 1
