@@ -20,9 +20,14 @@ Repository có thêm ứng dụng web local cho xổ số miền Nam với các 
 - Xem lịch mở thưởng trong tuần và toàn bộ kết quả của từng kỳ/đài.
 - Dò vé 6 số, cộng đủ các giải trùng gồm giải thường, phụ đặc biệt và khuyến khích.
 - Xếp hạng dàn 2 số và sinh dãy 6 số tham khảo cho kỳ kế tiếp bằng mô hình thống kê minh bạch.
+- Nhật ký dự đoán highlight trực tiếp phần số trùng với kết quả thật và so hiệu suất với baseline ngẫu nhiên lý thuyết.
 - Tab **Vietlott Power 6/55**: cập nhật kết quả Vietlott, thống kê tần suất 01-55, xem đầy đủ từng kỳ, dò bộ 6 số theo Jackpot 1/2 và các giải cố định, lịch quay Thứ 3/5/7, và sinh bộ số tham khảo.
 
 > Dự đoán chỉ phục vụ tham khảo/thử nghiệm. Xổ số là quá trình ngẫu nhiên; tần suất lịch sử không bảo đảm kết quả tương lai.
+
+Backtest walk-forward tái lập nằm tại `analysis/prediction_backtest.py` và
+`analysis/prediction_backtest.ipynb`. Mô hình chỉ nên đổi phiên bản khi hiệu năng out-of-sample vượt baseline toán học
+với khoảng tin cậy đủ rõ; không dùng một vài kỳ gần nhất để kết luận.
 
 ### Chạy nhanh trên PowerShell
 
