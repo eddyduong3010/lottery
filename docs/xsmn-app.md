@@ -91,6 +91,19 @@ Ba thành phần được chuẩn hóa min–max độc lập về thang 0–100
 
 Dãy 6 số sử dụng tần suất chữ số theo từng vị trí của giải đặc biệt, có làm trơn Laplace và seed cố định theo ngày–đài để tái lập kết quả. Đây là **điểm xếp hạng**, không phải xác suất đã hiệu chỉnh và không tạo lợi thế được chứng minh so với quay ngẫu nhiên.
 
+Nhật ký dự đoán hiển thị hai lớp đối chiếu:
+
+- Nền xanh trên dãy đặc biệt đánh dấu phần đuôi trùng liên tiếp; dòng “trùng chính xác toàn giải” chỉ xuất hiện khi số dự đoán bằng số thật trong đúng hạng giải.
+- Chỉ số hiệu suất luôn đặt cạnh baseline ngẫu nhiên tính từ cơ cấu giải. Với một bảng đủ 18 kết quả, số khớp chính xác kỳ vọng của dự đoán ngẫu nhiên là `0,012551` kết quả/kỳ; xác suất một dãy đặc biệt khớp ít nhất 2 số cuối là `1%`.
+
+Backtest dùng walk-forward: mỗi kỳ chỉ được dự đoán bằng dữ liệu có trước ngày quay, 100 kỳ đầu mỗi đài làm warm-up, và báo khoảng tin cậy 95%. Chạy lại bằng:
+
+```powershell
+uv run python analysis/prediction_backtest.py
+```
+
+Không nâng phiên bản mô hình chỉ vì một biến thể có điểm trung bình cao hơn trên cùng tập dữ liệu; chênh lệch phải ổn định ngoài mẫu và khoảng tin cậy không còn bao phủ baseline.
+
 ## Kiểm thử
 
 ```powershell

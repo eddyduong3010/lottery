@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import date, timedelta
+from html import escape
 from pathlib import Path
 
 import pandas as pd
@@ -9,7 +10,9 @@ import streamlit as st
 import streamlit_authenticator as stauth
 
 from prediction_history import (
+    prediction_comparison_rows,
     prediction_performance_frame,
+    prediction_performance_summary,
     saved_prediction_candidates,
     saved_xsmn_prize_predictions,
     update_prediction_history,
@@ -52,6 +55,16 @@ st.markdown(
       [data-testid="stMetric"] {background: #f8fafc; border: 1px solid #e2e8f0; padding: 1rem; border-radius: .75rem;}
       .ticket-number {font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.35rem; letter-spacing: .12em;}
       .muted-card {background:#f8fafc; border-left:4px solid #2563eb; padding:.8rem 1rem; border-radius:.4rem;}
+      .prediction-comparison {display:grid; gap:.65rem; margin:.4rem 0 1rem;}
+      .prediction-card {border:1px solid #e2e8f0; border-radius:.75rem; padding:.75rem .9rem; background:#fff;}
+      .prediction-card-title {font-weight:650; margin-bottom:.5rem;}
+      .prediction-line {display:flex; gap:.45rem; align-items:center; flex-wrap:wrap; margin:.3rem 0;}
+      .prediction-label {min-width:8.5rem; color:#64748b; font-size:.88rem;}
+      .number-chip, .lottery-number {font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-weight:650; letter-spacing:.06em;}
+      .number-chip {display:inline-flex; padding:.2rem .42rem; border-radius:.38rem; background:#f1f5f9; border:1px solid #cbd5e1;}
+      .number-match {background:#dcfce7; border-color:#22c55e; color:#166534; border-radius:.28rem; padding:.08rem .16rem;}
+      .number-bonus {background:#fef3c7; border-color:#f59e0b; color:#92400e;}
+      .prize-match {margin-top:.45rem; color:#166534; font-size:.9rem;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -192,60 +205,188 @@ def format_optional_vnd(value: int | None) -> str:
     return format_vnd(value)
 
 
+def _format_prediction_date(value: str) -> str:
+    return pd.to_datetime(value).strftime('%d-%m-%Y')
+
+
+def _suffix_number_html(number: str, matching_suffix_digits: int) -> str:
+    safe_number = escape(number)
+    if matching_suffix_digits <= 0 or matching_suffix_digits > len(number):
+        return f'<span class="lottery-number">{safe_number}</span>'
+    prefix = escape(number[:-matching_suffix_digits])
+    suffix = escape(number[-matching_suffix_digits:])
+    return f'<span class="lottery-number">{prefix}<span class="number-match">{suffix}</span></span>'
+
+
+def _number_chips_html(
+    numbers: list[str],
+    matched_main_numbers: set[str],
+    bonus_number: str = '',
+    matched_bonus: bool = False,
+) -> str:
+    chips = []
+    for number in numbers:
+        css_class = 'number-chip'
+        if number in matched_main_numbers:
+            css_class += ' number-match'
+        elif matched_bonus and number == bonus_number:
+            css_class += ' number-bonus'
+        chips.append(f'<span class="{css_class}">{escape(number)}</span>')
+    return ' '.join(chips)
+
+
+def render_prediction_comparisons(history: dict, game: str) -> None:
+    rows = prediction_comparison_rows(history, game, limit=8)
+    if not rows:
+        return
+    cards = []
+    for row in rows:
+        if game == 'xsmn':
+            station_code = str(row['station_code'])
+            station_name = STATIONS[station_code].name if station_code in STATIONS else station_code
+            predicted_number = row['predicted_numbers'][0] if row['predicted_numbers'] else ''
+            actual_number = row['actual_main_numbers'][0] if row['actual_main_numbers'] else ''
+            suffix_digits = int(row['matching_suffix_digits'])
+            prize_matches = row['prize_matches']
+            if prize_matches:
+                matched_text = ' · '.join(
+                    f'{PRIZE_SPECS[match["prize_code"]].label}: {escape(match["number"])}' for match in prize_matches
+                )
+                prize_html = f'<div class="prize-match">✓ Trùng chính xác toàn giải: {matched_text}</div>'
+            else:
+                prize_html = (
+                    '<div class="prize-match" style="color:#64748b">Chưa có số trùng chính xác toàn giải.</div>'
+                )
+            cards.append(
+                '<div class="prediction-card">'
+                f'<div class="prediction-card-title">{_format_prediction_date(str(row["target_date"]))} · '
+                f'{escape(station_name)}</div>'
+                '<div class="prediction-line"><span class="prediction-label">ĐB dự đoán</span>'
+                f'{_suffix_number_html(predicted_number, suffix_digits)}</div>'
+                '<div class="prediction-line"><span class="prediction-label">ĐB thực tế</span>'
+                f'{_suffix_number_html(actual_number, suffix_digits)}</div>'
+                f'{prize_html}</div>'
+            )
+            continue
+
+        matched_main = set(row['matched_main_numbers'])
+        bonus_number = str(row['actual_bonus_number'])
+        matched_bonus = bool(row['matched_bonus'])
+        cards.append(
+            '<div class="prediction-card">'
+            f'<div class="prediction-card-title">{_format_prediction_date(str(row["target_date"]))}</div>'
+            '<div class="prediction-line"><span class="prediction-label">Bộ dự đoán</span>'
+            f'{_number_chips_html(row["predicted_numbers"], matched_main, bonus_number, matched_bonus)}</div>'
+            '<div class="prediction-line"><span class="prediction-label">6 số chính</span>'
+            f'{_number_chips_html(row["actual_main_numbers"], matched_main)}</div>'
+            '<div class="prediction-line"><span class="prediction-label">Số đặc biệt</span>'
+            f'{_number_chips_html([bonus_number], set(), bonus_number, matched_bonus)}</div>'
+            '</div>'
+        )
+    st.markdown('##### Đối chiếu trực quan các kỳ gần nhất')
+    st.markdown(f'<div class="prediction-comparison">{"".join(cards)}</div>', unsafe_allow_html=True)
+    if game == 'xsmn':
+        st.caption('Nền xanh đánh dấu phần đuôi trùng nhau; dòng ✓ chỉ các số trùng chính xác trong đúng hạng giải.')
+    else:
+        st.caption('Nền xanh: số chính trùng. Nền vàng: vé có số đặc biệt của kỳ quay.')
+
+
 def render_prediction_performance(history: dict, game: str) -> None:
     frame = prediction_performance_frame(history, game)
+    summary = prediction_performance_summary(history, game)
     title = 'XSMN' if game == 'xsmn' else 'Power 6/55'
     st.markdown(f'#### Nhật ký và hiệu suất dự đoán {title}')
     if frame.empty:
         st.info('Nhật ký sẽ bắt đầu lưu từ kỳ dự đoán kế tiếp.')
         return
 
-    evaluated = frame[frame['evaluated']].copy()
     metric_columns = st.columns(4)
-    metric_columns[0].metric('Kỳ đã lưu', len(frame))
-    metric_columns[1].metric('Kỳ đã đối chiếu', len(evaluated))
-    exact_hits = int(evaluated['exact_hit'].sum()) if not evaluated.empty else 0
-    exact_rate = exact_hits / len(evaluated) if len(evaluated) else 0.0
-    metric_columns[2].metric('Trúng chính xác', exact_hits, f'{exact_rate:.2%}', delta_color='off')
+    metric_columns[0].metric(
+        'Kỳ đã đối chiếu', int(summary['evaluated_count']), f'{int(summary["saved_count"])} kỳ đã lưu'
+    )
+    metric_columns[1].metric(
+        'Trúng chính xác 6/6',
+        int(summary['exact_hits']),
+        f'{float(summary["exact_rate"]):.2%}',
+        delta_color='off',
+    )
     if game == 'xsmn':
-        average_hits = evaluated['prize_hits'].dropna().mean() if not evaluated.empty else 0.0
-        metric_columns[3].metric('Kết quả khớp trung bình', f'{average_hits:.2f}/18 kết quả')
+        metric_columns[2].metric(
+            'ĐB khớp đuôi ≥2',
+            f'{float(summary["suffix_two_rate"]):.2%}',
+            f'Ngẫu nhiên {float(summary["random_suffix_two_rate"]):.2%}',
+            delta_color='off',
+        )
+        metric_columns[3].metric(
+            'Khớp toàn giải TB',
+            f'{float(summary["average_prize_hits"]):.3f}/18',
+            f'Ngẫu nhiên {float(summary["random_expected_prize_hits"]):.4f}',
+            delta_color='off',
+        )
         display = frame.assign(
             station=frame['station_code'].map(lambda code: STATIONS[code].name if code in STATIONS else code),
             score=frame.apply(
-                lambda row: ''
-                if pd.isna(row['prize_hits'])
-                else f'{int(row["prize_hits"])}/{int(row["prize_total"])} kết quả · '
-                f'ĐB khớp đuôi {int(row["best_suffix_digits"])}/6',
+                lambda row: (
+                    ''
+                    if pd.isna(row['prize_hits'])
+                    else f'{int(row["prize_hits"])}/{int(row["prize_total"])} kết quả · '
+                    f'ĐB khớp đuôi {int(row["best_suffix_digits"])}/6'
+                ),
                 axis=1,
             ),
-        )[['target_date', 'station', 'candidates', 'actual', 'best_candidate', 'score', 'model_version']].rename(
+        )[
+            [
+                'target_date',
+                'station',
+                'candidates',
+                'actual',
+                'best_candidate',
+                'matched_prizes',
+                'score',
+                'model_version',
+            ]
+        ].rename(
             columns={
                 'target_date': 'Ngày quay',
                 'station': 'Đài',
                 'candidates': 'Dãy đặc biệt đã dự đoán',
                 'actual': 'Giải đặc biệt thật',
                 'best_candidate': 'Dãy đặc biệt đối chiếu',
+                'matched_prizes': 'Số trùng chính xác',
                 'score': 'Đối chiếu toàn bộ giải',
                 'model_version': 'Phiên bản mô hình',
             }
         )
     else:
-        average_match = evaluated['best_main_matches'].dropna().mean() if not evaluated.empty else 0.0
-        metric_columns[3].metric('Số chính khớp tốt nhất TB', f'{average_match:.2f}/6 số')
+        metric_columns[2].metric(
+            'Số chính khớp TB',
+            f'{float(summary["average_main_matches"]):.2f}/6',
+            f'Ngẫu nhiên {float(summary["random_expected_main_matches"]):.2f}',
+            delta_color='off',
+        )
+        metric_columns[3].metric(
+            'Kỳ khớp ≥2 số chính',
+            f'{float(summary["at_least_two_rate"]):.2%}',
+            f'Ngẫu nhiên {float(summary["random_at_least_two_rate"]):.2%}',
+            delta_color='off',
+        )
         display = frame.assign(
             score=frame['best_main_matches'].map(lambda value: '' if pd.isna(value) else f'{int(value)}/6 số')
-        )[['target_date', 'candidates', 'actual', 'best_candidate', 'score', 'model_version']].rename(
+        )[
+            ['target_date', 'candidates', 'actual', 'best_candidate', 'matched_numbers', 'score', 'model_version']
+        ].rename(
             columns={
                 'target_date': 'Ngày quay',
                 'candidates': 'Các bộ đã dự đoán',
                 'actual': 'Kết quả thật và số đặc biệt',
                 'best_candidate': 'Bộ gần nhất',
+                'matched_numbers': 'Số chính trùng',
                 'score': 'Số chính khớp',
                 'model_version': 'Phiên bản mô hình',
             }
         )
     display['Ngày quay'] = pd.to_datetime(display['Ngày quay']).dt.strftime('%d-%m-%Y')
+    render_prediction_comparisons(history, game)
     st.dataframe(display.head(50), hide_index=True, width='stretch')
     st.download_button(
         'Tải nhật ký CSV',
@@ -256,6 +397,7 @@ def render_prediction_performance(history: dict, game: str) -> None:
     )
     st.caption(
         'Hiệu suất chỉ được tính trên các dự đoán đã lưu trước thời điểm có kết quả. '
+        'Baseline ngẫu nhiên được tính từ cơ cấu giải, không lấy từ một lần quay giả lập. '
         'Nhật ký giúp so sánh các phiên bản mô hình; không làm thay đổi xác suất toán học của xổ số.'
     )
 

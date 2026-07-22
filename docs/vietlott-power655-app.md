@@ -44,6 +44,10 @@ uv run src/fetch_vietlott_power655.py --limit 8
 
 Điểm dự đoán là một cách xếp hạng thống kê có thể tái lập, không phải xác suất đã hiệu chỉnh. Các kỳ quay độc lập; dữ liệu quá khứ không làm một bộ số có xác suất toán học cao hơn bộ khác.
 
+Nhật ký đối chiếu tô nền xanh cho số chính trùng và nền vàng khi bộ dự đoán chứa số đặc biệt. Hiệu suất được so với baseline tổ hợp của một vé 6 số: số chính khớp kỳ vọng là `36/55 ≈ 0,6545` số/kỳ. Đây là baseline toán học, không phải kết quả của một lần mô phỏng random.
+
+Backtest walk-forward và các biến thể top-score nằm trong `analysis/prediction_backtest.py`. Chỉ thay đổi model version khi một biến thể vượt baseline ngoài mẫu với khoảng tin cậy đủ rõ; tăng số vé không trùng nhau chỉ tăng coverage và chi phí, không chứng minh mô hình dự báo tốt hơn.
+
 ## Nguồn
 
 - [Lịch sử kết quả Power 6/55 của Vietlott](https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/winning-number-655)
