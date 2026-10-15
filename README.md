@@ -19,15 +19,13 @@ Repository có thêm ứng dụng web local cho xổ số miền Nam với các 
 - Thống kê tần suất và tỷ lệ xuất hiện của đuôi 2/3 số theo đài, thời gian và phạm vi giải.
 - Xem lịch mở thưởng trong tuần và toàn bộ kết quả của từng kỳ/đài.
 - Dò vé 6 số, cộng đủ các giải trùng gồm giải thường, phụ đặc biệt và khuyến khích.
-- Xếp hạng dàn 2 số và sinh dãy 6 số tham khảo cho kỳ kế tiếp bằng mô hình thống kê minh bạch.
+- Xem tần suất đuôi số và sinh bộ số tham khảo theo baseline đều, có phiên bản và ngày dữ liệu rõ ràng.
 - Nhật ký dự đoán highlight trực tiếp phần số trùng với kết quả thật và so hiệu suất với baseline ngẫu nhiên lý thuyết.
-- Tab **Vietlott Power 6/55**: cập nhật kết quả Vietlott, thống kê tần suất 01-55, xem đầy đủ từng kỳ, dò bộ 6 số theo Jackpot 1/2 và các giải cố định, lịch quay Thứ 3/5/7, và sinh bộ số tham khảo.
+- **Sản phẩm → Vietlott Power 6/55** ở thanh bên: cập nhật kết quả Vietlott, thống kê tần suất 01-55, xem đầy đủ từng kỳ, dò bộ 6 số theo Jackpot 1/2 và các giải cố định, lịch quay Thứ 3/5/7, và sinh bộ số tham khảo.
 
 > Dự đoán chỉ phục vụ tham khảo/thử nghiệm. Xổ số là quá trình ngẫu nhiên; tần suất lịch sử không bảo đảm kết quả tương lai.
 
-Backtest walk-forward tái lập nằm tại `analysis/prediction_backtest.py` và
-`analysis/prediction_backtest.ipynb`. Mô hình chỉ nên đổi phiên bản khi hiệu năng out-of-sample vượt baseline toán học
-với khoảng tin cậy đủ rõ; không dùng một vài kỳ gần nhất để kết luận.
+Backtest theo thời gian nằm tại `analysis/prediction_backtest.py`; kiểm tra nguồn và nhật ký tại `analysis/source_audit.py`. V2 sửa rò rỉ dữ liệu, cách tính và hiển thị xác suất; **chưa chứng minh tăng tỷ lệ trúng**. Notebook cũ chỉ là tài liệu lịch sử, không thay thế CLI kiểm chứng hiện hành. Xem [báo cáo dữ liệu, thực nghiệm và thay đổi giao diện](docs/validation-2026-10-15.md).
 
 ### Chạy nhanh trên PowerShell
 
@@ -39,7 +37,7 @@ uv run src/fetch_vietlott_power655.py --all
 uv run streamlit run src/xsmn_app.py
 ```
 
-Mở `http://localhost:8501` trong trình duyệt. Dữ liệu XSMN được lưu local tại `data/xsmn.sqlite3`; dữ liệu Vietlott Power 6/55 được lưu tại `data/vietlott_power655.sqlite3`; cả hai đều không được commit. Xem thiết kế, công thức và lệnh kiểm thử trong [docs/xsmn-app.md](docs/xsmn-app.md) và [docs/vietlott-power655-app.md](docs/vietlott-power655-app.md).
+Mở `http://localhost:8501` trong trình duyệt. Dữ liệu XSMN được lưu local tại `data/xsmn.sqlite3`; dữ liệu Vietlott Power 6/55 được lưu tại `data/vietlott_power655.sqlite3`; repo hiện có snapshot của cả hai để tái lập phân tích. Xem thiết kế, công thức và lệnh kiểm thử trong [docs/xsmn-app.md](docs/xsmn-app.md) và [docs/vietlott-power655-app.md](docs/vietlott-power655-app.md).
 
 Khi khởi động, app tự kiểm tra các kết quả còn thiếu của XSMN trong 30 ngày gần nhất và các ID kỳ Power 6/55 chưa có. Kết quả đồng bộ được cache 15 phút để các lần Streamlit rerun không gọi nguồn liên tục. Có thể cấu hình bằng `LOTTERY_AUTO_SYNC_ENABLED`, `LOTTERY_AUTO_SYNC_TTL_SECONDS` và `XSMN_AUTO_SYNC_BOOTSTRAP_DAYS`.
 

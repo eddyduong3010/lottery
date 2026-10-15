@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import ceil
 
 from .repository import SQLiteRepository
 from .scraper import VietlottPower655Client
@@ -65,9 +66,14 @@ def sync_missing_results(
         latest_by_id = {draw.draw_id: draw for draw in latest_page}
         existing = repository.draw_ids()
         missing_ids = [f'{draw_id:05d}' for draw_id in range(1, latest_id + 1) if f'{draw_id:05d}' not in existing]
-        if len(missing_ids) > bulk_threshold:
-            draws = client.fetch_all_draws()
-            draws.extend(latest_page)
+        # A few weeks of missing results should not redownload the entire
+        # multi-year archive. Compare the approximate number of HTTP requests.
+        detail_requests = sum(draw_id not in latest_by_id for draw_id in missing_ids)
+        bulk_requests = ceil(latest_id / max(len(latest_page), 1)) + 2
+        if len(missing_ids) > bulk_threshold and detail_requests > bulk_requests:
+            fetched = {draw.draw_id: draw for draw in client.fetch_all_draws()}
+            fetched.update(latest_by_id)
+            draws = [fetched[draw_id] for draw_id in missing_ids]
         else:
             draws = [latest_by_id.get(draw_id) or client.fetch_detail(draw_id) for draw_id in missing_ids]
     except Exception as exc:

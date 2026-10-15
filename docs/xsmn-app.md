@@ -46,7 +46,7 @@ Mở [http://localhost:8501](http://localhost:8501). Trong ứng dụng cũng c�
 - Số trúng được lưu dưới dạng `TEXT`, không chuyển sang số nguyên, để giữ các giá trị như `05`, `007` hoặc `003405`.
 - Một kỳ chỉ được ghi khi đủ cơ cấu: G8=1, G7=1, G6=3, G5=1, G4=7, G3=2, G2=1, G1=1, ĐB=1.
 
-Database local mặc định là `data/xsmn.sqlite3`. File này nằm trong `.gitignore`.
+Database mặc định là `data/xsmn.sqlite3`. Repo hiện có snapshot dữ liệu được theo dõi trong Git; sao chép ra đường dẫn riêng khi thử đồng bộ hoặc chạy QA để giữ nguyên dữ liệu đầu vào của backtest.
 
 ## Quy tắc dò vé
 
@@ -79,30 +79,24 @@ Bộ dò giá trị giải chỉ áp dụng cho kỳ từ **01/01/2017**, là ng
 - **Ngày quay chưa về:** số ngày mở thưởng hoàn tất kể từ lần xuất hiện gần nhất. Các đài cùng ngày không bị sắp thành những “kỳ” nối tiếp giả tạo.
 - Ngày thiếu dữ liệu không được tự động tính như một lần không xuất hiện.
 
-## Dự đoán
+## Tham khảo và kiểm chứng
 
-Điểm dàn 2 số là tổ hợp:
+Chọn **Sản phẩm → Chức năng** ở thanh bên. Mỗi màn hình chỉ chạy phần đang mở; bộ lọc, đài và số vé được giữ riêng khi chuyển qua lại. Cảnh báo dữ liệu cũ dựa trên kỳ dự kiến theo giờ Việt Nam, không đồng nghĩa kiểm tra toàn bộ lịch sử đã đầy đủ.
 
-- 50% tần suất trong cửa sổ gần đây.
-- 30% tần suất dài hạn.
-- 20% độ trễ kể từ lần xuất hiện cuối.
+Phiên bản v2 bỏ trọng số “số lâu chưa về” và điểm chuẩn hóa 0–100. Bảng đuôi số hiển thị tần suất lịch sử làm trơn Dirichlet: `(c_i + 1)/(N + K)`, với `K=100` hoặc `1000`. Đây là thống kê mô tả trên từng kết quả giải, không phải xác suất một vé trúng thưởng. Trường `probability` ghi mức đều lý thuyết `1/K` cho một kết quả.
 
-Ba thành phần được chuẩn hóa min–max độc lập về thang 0–100 trước khi ghép điểm; vì vậy chúng là **điểm thành phần tương đối**, không phải tần suất phần trăm hoặc xác suất.
+Các dãy 6 số và bảng đầy đủ giải được sinh đều với seed ngày–đài–phiên bản, giữ ổn định khi tăng số lượng bộ tham khảo. Mỗi dãy đặc biệt có cùng xác suất lý thuyết `1/1.000.000`. Mọi hàm dự đoán lọc dữ liệu **trước ngày mục tiêu**. V2 sửa tính trung thực và khả năng kiểm chứng; không tuyên bố tăng tỷ lệ trúng.
 
-Dãy 6 số sử dụng tần suất chữ số theo từng vị trí của giải đặc biệt, có làm trơn Laplace và seed cố định theo ngày–đài để tái lập kết quả. Đây là **điểm xếp hạng**, không phải xác suất đã hiệu chỉnh và không tạo lợi thế được chứng minh so với quay ngẫu nhiên.
+Nhật ký lưu phiên bản và phương pháp. Bản ghi thiếu bằng chứng tạo trước ngày quay được tách khỏi thống kê dự báo trước giờ quay; không bổ sung dự đoán đầy đủ giải cho kỳ đã qua. Khớp hai số cuối không tương đương trúng giải đặc biệt hoặc trúng vé truyền thống.
 
-Nhật ký dự đoán hiển thị hai lớp đối chiếu:
-
-- Nền xanh trên dãy đặc biệt đánh dấu phần đuôi trùng liên tiếp; dòng “trùng chính xác toàn giải” chỉ xuất hiện khi số dự đoán bằng số thật trong đúng hạng giải.
-- Chỉ số hiệu suất luôn đặt cạnh baseline ngẫu nhiên tính từ cơ cấu giải. Với một bảng đủ 18 kết quả, số khớp chính xác kỳ vọng của dự đoán ngẫu nhiên là `0,012551` kết quả/kỳ; xác suất một dãy đặc biệt khớp ít nhất 2 số cuối là `1%`.
-
-Backtest dùng walk-forward: mỗi kỳ chỉ được dự đoán bằng dữ liệu có trước ngày quay, 100 kỳ đầu mỗi đài làm warm-up, và báo khoảng tin cậy 95%. Chạy lại bằng:
+Đánh giá cũ/mới trên cùng kỳ, cùng số lựa chọn, theo thứ tự thời gian:
 
 ```powershell
 uv run python analysis/prediction_backtest.py
+uv run python analysis/source_audit.py --help
 ```
 
-Không nâng phiên bản mô hình chỉ vì một biến thể có điểm trung bình cao hơn trên cùng tập dữ liệu; chênh lệch phải ổn định ngoài mẫu và khoảng tin cậy không còn bao phủ baseline.
+Backtest loại dữ liệu trước 01/01/2017 khỏi so sánh cơ cấu hiện hành, dùng 100 kỳ đầu mỗi đài làm khởi tạo, so baseline đều, Brier/log loss và khoảng tin cậy. Xem kết quả và giới hạn ở [báo cáo kiểm chứng](validation-2026-10-15.md).
 
 ## Kiểm thử
 

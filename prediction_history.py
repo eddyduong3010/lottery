@@ -166,12 +166,18 @@ def _full_prediction_payload(frame: pd.DataFrame) -> list[dict[str, Any]]:
             'ordinal': int(row.ordinal),
             'number': str(row.number),
             'model_score': float(row.model_score),
+            'probability': float(row.probability),
         }
         for row in frame.itertuples(index=False)
     ]
 
 
-def _ensure_xsmn_full_predictions(predictions: list[dict[str, Any]], results: pd.DataFrame) -> None:
+def _ensure_xsmn_full_predictions(
+    predictions: list[dict[str, Any]],
+    results: pd.DataFrame,
+    as_of_date: date,
+    generated_at: str | None = None,
+) -> None:
     for record in predictions:
         if record.get('game') != 'xsmn':
             continue
@@ -179,14 +185,13 @@ def _ensure_xsmn_full_predictions(predictions: list[dict[str, Any]], results: pd
             (candidate for candidate in record.get('candidates', []) if candidate.get('value')),
             None,
         )
-        if record.get('prize_predictions'):
-            if locked_candidate:
-                for prediction in record['prize_predictions']:
-                    if prediction.get('prize_code') == 'db':
-                        prediction['number'] = str(locked_candidate['value'])
-                        prediction['model_score'] = float(locked_candidate.get('model_score', 0.0))
+        # A saved forecast is immutable; never fabricate missing prize forecasts
+        # after the target draw and count them as prospective performance.
+        if record.get('prize_predictions') or record.get('actual'):
             continue
         target_date = date.fromisoformat(str(record['target_date']))
+        if target_date <= as_of_date:
+            continue
         station_code = str(record['station_code'])
         recent_draws = max(int(record.get('recent_draws', 30)), 1)
         station_history = results[
@@ -206,6 +211,8 @@ def _ensure_xsmn_full_predictions(predictions: list[dict[str, Any]], results: pd
             full_prediction.loc[special_mask, 'model_score'] = float(locked_candidate.get('model_score', 0.0))
         record['prize_predictions'] = _full_prediction_payload(full_prediction)
         record['prize_model_version'] = FULL_DRAW_MODEL_VERSION
+        record['prize_predictions_created_at'] = generated_at or datetime.now(VIETNAM_TZ).isoformat()
+        record['prize_training_cutoff'] = pd.Timestamp(full_prediction.attrs['training_cutoff']).date().isoformat()
 
 
 def _append_xsmn_predictions(
@@ -241,7 +248,7 @@ def _append_xsmn_predictions(
         if special.empty:
             continue
         prediction_id = _prediction_id('xsmn', target_date, station_code, FULL_DRAW_MODEL_VERSION)
-        training_cutoff = pd.to_datetime(station_history['draw_date']).max().date().isoformat()
+        training_cutoff = pd.Timestamp(full_prediction.attrs['training_cutoff']).date().isoformat()
         predictions.append(
             {
                 'id': prediction_id,
@@ -249,15 +256,25 @@ def _append_xsmn_predictions(
                 'target_date': target_date.isoformat(),
                 'station_code': station_code,
                 'model_version': FULL_DRAW_MODEL_VERSION,
+                'selection_method': full_prediction.attrs['selection_method'],
+                'score_kind': full_prediction.attrs['score_kind'],
+                'probability_basis': full_prediction.attrs['probability_basis'],
                 'recent_draws': recent_draws,
                 'training_cutoff': training_cutoff,
                 'created_at': created_at,
                 'candidates': [
-                    {'rank': rank, 'value': str(row.number), 'model_score': float(row.model_score)}
+                    {
+                        'rank': rank,
+                        'value': str(row.number),
+                        'model_score': float(row.model_score),
+                        'probability': float(row.probability),
+                    }
                     for rank, row in enumerate(special.itertuples(index=False), start=1)
                 ],
                 'prize_predictions': _full_prediction_payload(full_prediction),
                 'prize_model_version': FULL_DRAW_MODEL_VERSION,
+                'prize_predictions_created_at': created_at,
+                'prize_training_cutoff': training_cutoff,
             }
         )
         locked_keys.add(prediction_key)
@@ -274,6 +291,9 @@ def _append_power655_prediction(
         return
     prediction_key = _prediction_key('power655', target_date, '')
     if prediction_key in locked_keys:
+        return
+    draws = draws[pd.to_datetime(draws['draw_date']) < pd.Timestamp(target_date)].copy()
+    if draws.empty:
         return
     draw_count = int(draws['draw_id'].nunique())
     recent_draws = min(30, draw_count)
@@ -293,11 +313,19 @@ def _append_power655_prediction(
             'target_date': target_date.isoformat(),
             'station_code': '',
             'model_version': POWER655_MODEL_VERSION,
+            'selection_method': candidates.attrs['selection_method'],
+            'score_kind': candidates.attrs['score_kind'],
+            'probability_basis': candidates.attrs['probability_basis'],
             'recent_draws': recent_draws,
-            'training_cutoff': pd.to_datetime(draws['draw_date']).max().date().isoformat(),
+            'training_cutoff': pd.Timestamp(candidates.attrs['training_cutoff']).date().isoformat(),
             'created_at': created_at,
             'candidates': [
-                {'rank': rank, 'value': str(row.numbers), 'model_score': float(row.model_score)}
+                {
+                    'rank': rank,
+                    'value': str(row.numbers),
+                    'model_score': float(row.model_score),
+                    'probability': float(row.probability),
+                }
                 for rank, row in enumerate(candidates.itertuples(index=False), start=1)
             ],
         }
@@ -317,7 +345,7 @@ def update_prediction_history(
     history = deepcopy(original)
     predictions = history['predictions']
     _lock_one_candidate_per_draw(predictions)
-    _ensure_xsmn_full_predictions(predictions, xsmn_results)
+    _ensure_xsmn_full_predictions(predictions, xsmn_results, current.date(), generated_at=created_at)
     _evaluate_predictions(predictions, xsmn_results, power655_draws, created_at)
 
     locked_keys = {
@@ -354,6 +382,49 @@ def update_prediction_history(
     return history
 
 
+def _saved_prediction_metadata(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'model_version': record.get('model_version', 'unknown'),
+        'selection_method': record.get('selection_method', 'legacy_unverified'),
+        'score_kind': record.get('score_kind', 'legacy_unverified'),
+        'probability_basis': record.get('probability_basis', 'legacy_unverified'),
+    }
+
+
+def prediction_timing_verified(record: dict[str, Any]) -> bool:
+    """Conservative timing evidence: both creation and training predate the day.
+
+    Same-day records are unverified here because a result-availability cutoff
+    is not proof that creation preceded the start of the actual draw.
+    """
+    try:
+        created = datetime.fromisoformat(str(record['created_at']))
+        if created.tzinfo is None:
+            return False
+        target = date.fromisoformat(str(record['target_date']))
+        training = pd.Timestamp(record['training_cutoff']).date()
+        return created.astimezone(VIETNAM_TZ).date() < target and training < target
+    except KeyError, TypeError, ValueError:
+        return False
+
+
+def prediction_prize_timing_verified(record: dict[str, Any]) -> bool:
+    """Require separate timestamp evidence for the full-prize forecast.
+
+    Legacy full-prize entries may have been backfilled after the original
+    special-prize candidate was saved. Its timestamp cannot certify them.
+    """
+    if not record.get('prize_predictions') or not record.get('prize_predictions_created_at'):
+        return False
+    return prediction_timing_verified(
+        {
+            'created_at': record['prize_predictions_created_at'],
+            'target_date': record.get('target_date'),
+            'training_cutoff': record.get('prize_training_cutoff', record.get('training_cutoff')),
+        }
+    )
+
+
 def saved_prediction_candidates(
     history: dict[str, Any], game: str, target_date: date, station_code: str = ''
 ) -> pd.DataFrame:
@@ -368,12 +439,14 @@ def saved_prediction_candidates(
         == _prediction_key(game, target_date, station_code)
     ]
     if not matching:
-        return pd.DataFrame(columns=['rank', 'value', 'model_score'])
+        return pd.DataFrame(columns=['rank', 'value', 'model_score', 'probability'])
     locked = min(matching, key=lambda record: str(record.get('created_at', '')))
-    frame = pd.DataFrame(locked.get('candidates', []), columns=['rank', 'value', 'model_score'])
+    frame = pd.DataFrame(locked.get('candidates', []), columns=['rank', 'value', 'model_score', 'probability'])
     if frame.empty:
         return frame
-    return frame.sort_values('rank').reset_index(drop=True)
+    frame = frame.sort_values('rank').reset_index(drop=True)
+    frame.attrs.update(_saved_prediction_metadata(locked))
+    return frame
 
 
 def saved_xsmn_prize_predictions(history: dict[str, Any], target_date: date, station_code: str) -> pd.DataFrame:
@@ -388,15 +461,17 @@ def saved_xsmn_prize_predictions(history: dict[str, Any], target_date: date, sta
         == _prediction_key('xsmn', target_date, station_code)
     ]
     if not matching:
-        return pd.DataFrame(columns=['prize_code', 'ordinal', 'number', 'model_score'])
+        return pd.DataFrame(columns=['prize_code', 'ordinal', 'number', 'model_score', 'probability'])
     locked = min(matching, key=lambda record: str(record.get('created_at', '')))
     frame = pd.DataFrame(
         locked.get('prize_predictions', []),
-        columns=['prize_code', 'ordinal', 'number', 'model_score'],
+        columns=['prize_code', 'ordinal', 'number', 'model_score', 'probability'],
     )
     if frame.empty:
         return frame
-    return frame.sort_values(['prize_code', 'ordinal']).reset_index(drop=True)
+    frame = frame.sort_values(['prize_code', 'ordinal']).reset_index(drop=True)
+    frame.attrs.update(_saved_prediction_metadata(locked))
+    return frame
 
 
 def prediction_performance_frame(history: dict[str, Any], game: str) -> pd.DataFrame:
@@ -530,7 +605,7 @@ def _xsmn_random_expected_prize_hits(record: dict[str, Any]) -> float:
     for prediction in record.get('prize_predictions', []):
         prize_code = str(prediction.get('prize_code', ''))
         number = str(prediction.get('number', ''))
-        actual_count = len(actual_results.get(prize_code, []))
+        actual_count = len(set(actual_results.get(prize_code, [])))
         if number and actual_count:
             expected += actual_count / (10 ** len(number))
     return expected
@@ -544,27 +619,42 @@ def _power_at_least_two_probability(ticket_size: int) -> float:
     return probability
 
 
-def prediction_performance_summary(history: dict[str, Any], game: str) -> dict[str, float | int]:
+def prediction_performance_summary(history: dict[str, Any], game: str) -> dict[str, Any]:
     """Summarize observed performance next to a fair-draw mathematical baseline."""
 
     records = [record for record in history.get('predictions', []) if record.get('game') == game]
     evaluated = [record for record in records if record.get('actual')]
     exact_hits = sum(bool((record.get('metrics') or {}).get('exact_hit')) for record in evaluated)
-    summary: dict[str, float | int] = {
+    timing_verified = sum(prediction_timing_verified(record) for record in evaluated)
+    summary: dict[str, Any] = {
         'saved_count': len(records),
+        'timing_verified_count': timing_verified,
+        'timing_unverified_count': len(evaluated) - timing_verified,
+        'model_versions': sorted({str(record.get('model_version', 'unknown')) for record in evaluated}),
+        'baseline_comparison_valid': all(len(record.get('candidates', [])) == 1 for record in evaluated),
         'evaluated_count': len(evaluated),
         'exact_hits': exact_hits,
         'exact_rate': exact_hits / len(evaluated) if evaluated else 0.0,
     }
     if game == 'xsmn':
+        prize_verified = sum(prediction_prize_timing_verified(record) for record in evaluated)
+        summary.update(
+            prize_timing_verified_count=prize_verified,
+            prize_timing_unverified_count=sum(bool(record.get('prize_predictions')) for record in evaluated)
+            - prize_verified,
+        )
         prize_hits = [float((record.get('metrics') or {}).get('prize_hits') or 0) for record in evaluated]
         suffix_two_hits = sum(
             int((record.get('metrics') or {}).get('best_suffix_digits') or 0) >= 2 for record in evaluated
         )
         suffix_two_baselines = []
         for record in evaluated:
-            candidate_count = len(record.get('candidates', []))
-            suffix_two_baselines.append(1 - (1 - 0.01) ** candidate_count)
+            unique_suffixes = {
+                str(candidate.get('value', ''))[-2:]
+                for candidate in record.get('candidates', [])
+                if len(str(candidate.get('value', ''))) >= 2
+            }
+            suffix_two_baselines.append(len(unique_suffixes) / 100)
         summary.update(
             average_prize_hits=sum(prize_hits) / len(prize_hits) if prize_hits else 0.0,
             random_expected_prize_hits=sum(_xsmn_random_expected_prize_hits(record) for record in evaluated)

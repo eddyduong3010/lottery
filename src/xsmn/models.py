@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from .config import PRIZE_SPECS, STATIONS
+from .config import PRIZE_RULES_EFFECTIVE_FROM, PRIZE_SPECS, STATIONS
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +55,11 @@ class Draw:
         counts = {code: 0 for code in PRIZE_SPECS}
         ordinals: dict[str, list[int]] = {code: [] for code in PRIZE_SPECS}
         for result in self.results:
+            if (
+                self.draw_date >= PRIZE_RULES_EFFECTIVE_FROM
+                and len(result.number) != PRIZE_SPECS[result.prize_code].digits
+            ):
+                raise ValueError(f'{result.prize_code}: độ dài kết quả không khớp cơ cấu giải hiện hành')
             key = (result.prize_code, result.ordinal)
             if key in seen:
                 raise ValueError(f'Kết quả bị trùng: {key}')

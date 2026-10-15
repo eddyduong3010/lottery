@@ -44,6 +44,25 @@ def _default_prizes() -> tuple[PrizeTierResult, ...]:
     return tuple(PrizeTierResult(code, None, PRIZE_SPECS[code].fixed_payout_vnd) for code in PRIZE_DISPLAY_ORDER)
 
 
+def _merge_draws(target: dict[str, Power655Draw], draws: list[Power655Draw]) -> None:
+    """Deduplicate source markup/pages without hiding conflicting outcomes."""
+    for draw in draws:
+        existing = target.get(draw.draw_id)
+        if existing and (existing.draw_date, existing.main_numbers, existing.bonus_number) != (
+            draw.draw_date,
+            draw.main_numbers,
+            draw.bonus_number,
+        ):
+            raise VietlottParseError(f'Kỳ {draw.draw_id}: nguồn chứa kết quả mâu thuẫn')
+        target[draw.draw_id] = draw
+
+
+def _unique_draws(draws: list[Power655Draw]) -> list[Power655Draw]:
+    unique: dict[str, Power655Draw] = {}
+    _merge_draws(unique, draws)
+    return list(unique.values())
+
+
 def parse_history_html(html: str, source_url: str = HISTORY_URL) -> list[Power655Draw]:
     soup = BeautifulSoup(html, 'lxml')
     rows = soup.select('#divResultContent tbody tr') or soup.select('table tbody tr')
@@ -78,7 +97,7 @@ def parse_history_html(html: str, source_url: str = HISTORY_URL) -> list[Power65
         )
     if not draws:
         raise VietlottParseError('Không đọc được kỳ quay Power 6/55 nào')
-    return draws
+    return _unique_draws(draws)
 
 
 def parse_detail_html(html: str, source_url: str = '') -> Power655Draw:
@@ -177,7 +196,7 @@ def parse_xoso_history_html(html: str, source_url: str = XOSO_HISTORY_URL) -> li
                 fetched_at=fetched_at,
             )
         )
-    return draws
+    return _unique_draws(draws)
 
 
 class VietlottPower655Client:
@@ -318,8 +337,7 @@ class VietlottPower655Client:
             page_draws = self.fetch_history_page(page_index, render_info, history_key)
             if not page_draws:
                 raise VietlottSourceError(f'Trang lịch sử {page_index + 1}/{total_pages} không có dữ liệu')
-            for draw in page_draws:
-                draws_by_id[draw.draw_id] = draw
+            _merge_draws(draws_by_id, page_draws)
             if progress:
                 progress(page_index + 1, total_pages)
         draws = sorted(draws_by_id.values(), key=lambda draw: (draw.draw_date, int(draw.draw_id)))
@@ -348,8 +366,7 @@ class VietlottPower655Client:
             if not page_draws:
                 break
             previous_count = len(draws_by_id)
-            for draw in page_draws:
-                draws_by_id[draw.draw_id] = draw
+            _merge_draws(draws_by_id, page_draws)
             if len(draws_by_id) == previous_count:
                 break
             if progress:
@@ -376,7 +393,10 @@ class VietlottPower655Client:
 
     def fetch_detail(self, draw_id: str) -> Power655Draw:
         url = DETAIL_URL_TEMPLATE.format(draw_id=draw_id)
-        return parse_detail_html(self._get_text(url), url)
+        draw = parse_detail_html(self._get_text(url), url)
+        if draw.draw_id != draw_id.zfill(5):
+            raise VietlottParseError(f'Kỳ nguồn {draw.draw_id} không khớp kỳ yêu cầu {draw_id}')
+        return draw
 
     def fetch_latest_draws(self, limit: int = 8, include_details: bool = True) -> list[Power655Draw]:
         draws = self.fetch_history()[:limit]

@@ -1,6 +1,6 @@
 # Vietlott Power 6/55 trong app Streamlit
 
-Tab `Vietlott Power 6/55` hỗ trợ thu thập kết quả, thống kê số 01-55, dò vé và tạo bộ số tham khảo.
+Mục sản phẩm `Vietlott Power 6/55` hỗ trợ thu thập kết quả, thống kê số 01-55, dò vé và tạo bộ số tham khảo.
 
 ## Tải toàn bộ lịch sử
 
@@ -10,9 +10,9 @@ uv run src/fetch_vietlott_power655.py --all
 uv run streamlit run src/xsmn_app.py
 ```
 
-Mở [http://localhost:8501](http://localhost:8501), chọn tab `Vietlott Power 6/55`. Trong giao diện cũng có nút **Tải toàn bộ lịch sử Power 6/55**.
+Mở [http://localhost:8501](http://localhost:8501), chọn **Sản phẩm → Vietlott Power 6/55** ở thanh bên. Trong giao diện cũng có nút **Tải toàn bộ lịch sử Power 6/55**.
 
-Mỗi khi app khởi động, Power 6/55 tự đọc kỳ mới nhất và chỉ tải các ID còn thiếu. Nếu database mới hoặc thiếu trên 32 kỳ, app tự dùng phân trang để tải hàng loạt. Trạng thái đồng bộ và dự đoán cho kỳ tiếp theo xuất hiện ngay ở trang Tổng quan.
+Mỗi khi app khởi động, Power 6/55 tự đọc kỳ mới nhất và chỉ tải các ID còn thiếu. Khi thiếu nhiều kỳ, bộ đồng bộ so chi phí số request chi tiết với tải toàn bộ lịch sử để chọn cách ít request hơn. Nhật ký tham khảo chỉ được tính khi mở **Tham khảo & kiểm chứng**; không chạy khi đang dò vé hoặc xem thống kê.
 
 Database mặc định là `data/vietlott_power655.sqlite3`. Có thể đổi đường dẫn:
 
@@ -40,13 +40,15 @@ uv run src/fetch_vietlott_power655.py --limit 8
 - Một số cụ thể có xác suất xuất hiện trong 6 số chính mỗi kỳ là `6/55 = 10,9091%`.
 - Một bộ 6 số cụ thể có xác suất Jackpot 1 là `1/C(55,6) = 1/28.989.675`.
 - App hiển thị xác suất lý thuyết từng hạng giải và tần suất thực nghiệm trên toàn bộ dữ liệu.
-- Điểm dự đoán kết hợp 50% tần suất gần đây, 30% tần suất dài hạn và 20% số kỳ chưa xuất hiện.
+- Tần suất lịch sử được làm trơn về `6/55`: `(c_i + 100 × 6/55)/(T + 100)`. `c_i` chỉ đếm số chính, `T` là số kỳ; 100 là mức prior cố định để thử nghiệm, không được tuyên bố là tối ưu.
+- Bộ số tham khảo v2 được sinh đều, có seed theo ngày và phiên bản. Tăng số bộ không làm thay đổi bộ đầu. Mọi bộ đều có cùng xác suất Jackpot 1; bỏ điểm tương đối 100 gây hiểu nhầm.
+- Mọi dữ liệu ngày mục tiêu hoặc tương lai bị loại trước khi tính. Số đặc biệt luôn tách khỏi 6 số chính.
 
-Điểm dự đoán là một cách xếp hạng thống kê có thể tái lập, không phải xác suất đã hiệu chỉnh. Các kỳ quay độc lập; dữ liệu quá khứ không làm một bộ số có xác suất toán học cao hơn bộ khác.
+Xếp hạng tần suất là mô tả dữ liệu, không phải bằng chứng dự báo chính xác hơn. Các kỳ quay độc lập; dữ liệu quá khứ không làm một bộ số có xác suất toán học cao hơn bộ khác.
 
 Nhật ký đối chiếu tô nền xanh cho số chính trùng và nền vàng khi bộ dự đoán chứa số đặc biệt. Hiệu suất được so với baseline tổ hợp của một vé 6 số: số chính khớp kỳ vọng là `36/55 ≈ 0,6545` số/kỳ. Đây là baseline toán học, không phải kết quả của một lần mô phỏng random.
 
-Backtest walk-forward và các biến thể top-score nằm trong `analysis/prediction_backtest.py`. Chỉ thay đổi model version khi một biến thể vượt baseline ngoài mẫu với khoảng tin cậy đủ rõ; tăng số vé không trùng nhau chỉ tăng coverage và chi phí, không chứng minh mô hình dự báo tốt hơn.
+Backtest walk-forward và các biến thể top-score nằm trong `analysis/prediction_backtest.py`. V2 là sửa phương pháp và kiểm soát rò rỉ dữ liệu, không phải mô hình có lợi thế đã được chứng minh. Tăng số vé không trùng nhau chỉ tăng số kết quả được bao phủ và chi phí. Kết quả thực nghiệm và so sánh phiên bản ở [báo cáo kiểm chứng](validation-2026-10-15.md).
 
 ## Nguồn
 

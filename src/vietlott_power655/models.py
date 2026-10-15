@@ -55,6 +55,10 @@ class Power655Draw:
         normalized_bonus = normalize_number(self.bonus_number)
         if normalized_bonus in normalized_main:
             raise ValueError('Số đặc biệt Power 6/55 không được trùng bộ số chính')
+        # Store the validated canonical representation, not the raw input.
+        object.__setattr__(self, 'main_numbers', normalized_main)
+        object.__setattr__(self, 'bonus_number', normalized_bonus)
+        object.__setattr__(self, 'draw_id', self.draw_id.zfill(5))
 
         prize_codes = {prize.tier_code for prize in self.prizes}
         missing = set(PRIZE_SPECS) - prize_codes

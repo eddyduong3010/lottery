@@ -37853,7 +37853,9 @@
       "actual": {
         "bonus_number": "15",
         "evaluated_at": "2026-10-08T01:26:38.048142+07:00",
-        "main_numbers": "06 11 25 27 37 46"
+        "main_numbers": "06 11 25 27 37 45",
+        "source_checked_at": "2026-10-15T15:36:51.596048+07:00",
+        "source_url": "https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/655?id=01399&nocatche=1"
       },
       "candidates": [
         {

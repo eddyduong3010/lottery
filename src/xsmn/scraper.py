@@ -57,6 +57,8 @@ def parse_xoso_com_html(draw_date: date, html: str, source_url: str = '') -> lis
         raise XSMNParseError(str(exc)) from exc
     expected_station_codes = set(stations_for_date(draw_date))
     actual_station_codes = {station.code for station in stations}
+    if len(actual_station_codes) != len(stations):
+        raise XSMNParseError('Bảng kết quả có cột đài bị trùng')
     missing_station_codes = expected_station_codes - actual_station_codes
     unexpected_station_codes = actual_station_codes - expected_station_codes
     if missing_station_codes or (unexpected_station_codes and draw_date >= PRIZE_RULES_EFFECTIVE_FROM):
@@ -80,7 +82,7 @@ def parse_xoso_com_html(draw_date: date, html: str, source_url: str = '') -> lis
         except ValueError:
             continue
         if prize_code in seen_prizes:
-            continue
+            raise XSMNParseError(f'Bảng kết quả có hàng giải bị trùng: {prize_code}')
         cells = row.find_all('td', recursive=False)
         if len(cells) != len(stations):
             raise XSMNParseError(f'{prize_code}: số cột kết quả ({len(cells)}) khác số đài ({len(stations)})')
@@ -100,7 +102,19 @@ def parse_xoso_com_html(draw_date: date, html: str, source_url: str = '') -> lis
                 unavailable_station_codes.add(station.code)
                 continue
             expected_count = PRIZE_SPECS[prize_code].result_count
-            numbers = numbers[:expected_count]
+            # Some pages repeat the complete visible block. Only collapse exact
+            # block copies; never silently discard a conflicting extra number.
+            if len(numbers) > expected_count and len(numbers) % expected_count == 0:
+                first_block = numbers[:expected_count]
+                if all(
+                    numbers[index : index + expected_count] == first_block
+                    for index in range(0, len(numbers), expected_count)
+                ):
+                    numbers = first_block
+            if len(numbers) != expected_count:
+                raise XSMNParseError(
+                    f'{station.name} {prize_code}: cần {expected_count} kết quả, đọc được {len(numbers)}'
+                )
             for ordinal, number in enumerate(numbers, start=1):
                 if draw_date < PRIZE_RULES_EFFECTIVE_FROM and number.isascii() and number.isdigit():
                     expected_digits = PRIZE_SPECS[prize_code].digits
@@ -108,8 +122,6 @@ def parse_xoso_com_html(draw_date: date, html: str, source_url: str = '') -> lis
                         pass
                     elif len(number) < expected_digits:
                         number = number.zfill(expected_digits)
-                    elif len(number) > expected_digits:
-                        number = number[-expected_digits:]
                 try:
                     station_results[station.code].append(PrizeResult(prize_code, ordinal, number))
                 except ValueError as exc:

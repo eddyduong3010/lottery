@@ -56,15 +56,14 @@ def test_parse_rejects_incomplete_prize_structure() -> None:
         parse_xoso_com_html(date(2026, 7, 10), html)
 
 
-def test_historical_parser_normalizes_legacy_source_width_errors() -> None:
+def test_historical_parser_rejects_excess_digits_instead_of_truncating() -> None:
     soup = BeautifulSoup(FIXTURE.read_text(encoding='utf-8'), 'lxml')
     soup.select_one('link[rel="canonical"]')['href'] = 'https://xoso.com.vn/xsmn-10-07-2009.html'
     first_g8 = soup.select_one('tbody > tr td span.xs_prize1.show')
     first_g8.string = '305'
 
-    draws = parse_xoso_com_html(date(2009, 7, 10), str(soup))
-
-    assert draws[0].results_for('g8')[0].number == '05'
+    with pytest.raises(XSMNParseError, match='chữ số'):
+        parse_xoso_com_html(date(2009, 7, 10), str(soup))
 
 
 def test_historical_parser_accepts_extra_station_from_old_schedule() -> None:

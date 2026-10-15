@@ -8,3 +8,11 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+
+# Local Python/runtime artifacts
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/

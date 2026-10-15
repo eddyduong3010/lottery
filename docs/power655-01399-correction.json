@@ -1,0 +1,15 @@
+{
+  "record_id": "power655:2026-09-17:-:power655-transparent-blend-v1",
+  "field": "actual.main_numbers",
+  "previous": "06 11 25 27 37 46",
+  "corrected": "06 11 25 27 37 45",
+  "source_url": "https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/655?id=01399&nocatche=1",
+  "checked_at": "2026-10-15T15:36:51.596048+07:00",
+  "source_html_sha256": "836d5adf53abe004611506c0aa870eb464432b7956a62f622f3fab3bd96dca8e",
+  "ledger_before_sha256": "113b4763d8aeb8f5e3b4d71f1c83431fc95115f9dbaab927c960147843dab69d",
+  "ledger_after_sha256": "148ababe841b7cf269bb30d39d822e553dc36264a81f066a5cf64bd1d11a7d7f",
+  "prediction_unchanged": true,
+  "matches_before": 0,
+  "matches_after": 0,
+  "reason": "Original source response and a second official GET agree; the existing ledger had 46 instead of 45."
+}
