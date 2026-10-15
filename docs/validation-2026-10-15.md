@@ -21,7 +21,7 @@ Kiểm tra mẫu trực tiếp ngày 15/10/2026:
 - 6 kỳ HCM trong snapshot từ xoso.com.vn khớp đủ **108/108 giá trị giải** với [Công ty XSKT TP.HCM](https://www.xskthcm.com/). Ví dụ trang [kỳ 11/07/2026](https://www.xskthcm.com/xskt?id=1191). Kết quả này chỉ xác nhận mẫu HCM, chưa xác nhận mọi đài và toàn lịch sử.
 - 6 kỳ Power lịch sử khớp [Vietlott](https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/winning-number-655). Snapshot và trang đối chiếu cùng nhà công bố nên đây là kiểm tra lại, không phải hai nguồn độc lập.
 - Nguồn Power thứ hai xoso.com.vn trả HTTP 403 trong môi trường này; báo cáo ghi `not_verified`, không coi là đồng thuận. Không bỏ kiểm tra TLS hoặc vượt chặn.
-- Đã tải đủ **40 kỳ mới #01371–#01410, từ 14/07 đến 13/10/2026**, từ nguồn chính thức, không lỗi tải. Dữ liệu cập nhật nằm trong bản sao phân tích; snapshot Git được giữ nguyên để tái lập kết quả cũ.
+- Đã tải đủ **40 kỳ mới #01371–#01410, từ 14/07 đến 13/10/2026**, từ nguồn chính thức, không lỗi tải. Bản dữ liệu triển khai `data/vietlott_power655.sqlite3` nay chứa 1.410 kỳ đến 13/10/2026. Snapshot cũ 1.370 kỳ được giữ nguyên từng byte tại `analysis/fixtures/power655-snapshot-2026-07-11.sqlite3` để tái lập kết quả cũ.
 - Phát hiện nhật ký kỳ **01399 ngày 17/09/2026** lưu `06 11 25 27 37 46`, trong khi hai lần đọc trang [kết quả chính thức](https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/655?id=01399&nocatche=1) đều trả `06 11 25 27 37 45`, bóng đặc biệt `15`. Đã sửa riêng kết quả thực tế, giữ nguyên số dự đoán; số khớp của vé đã lưu vẫn là 0. Chi tiết trước/sau và hash nằm trong `power655-01399-correction.json`.
 - Kiểm tra toàn bộ 40 kết quả Power trong nhật ký với dữ liệu chính thức: trước sửa có **39 khớp, 1 mâu thuẫn**; sau sửa **40/40 khớp**. CLI trả mã lỗi 1 khi gặp mâu thuẫn, không coi đó là một lần kiểm tra thành công.
 - Mỗi phản hồi đối chiếu có URL, thời điểm, SHA-256 và phạm vi. HTML trùng được khử theo danh tính kỳ; mâu thuẫn được báo riêng, không trộn thành nhiều quan sát.
@@ -30,6 +30,22 @@ CLI kiểm tra lại (chỉ đọc DB, GET công khai giới hạn mẫu):
 
 ```bash
 python analysis/source_audit.py --live --sample-draws 6 --output work/source-audit.json
+```
+
+## Snapshot triển khai và tái lập baseline
+
+Bản code `5adde5b` đã qua review Astra, 93 test và kiểm tra giao diện Streamlit thực tế: điều hướng, giữ bộ lọc, XSMN hiển thị mới nhất 14/10/2026. Khi khởi động bản đó, nguồn Vietlott trả HTTP 403 ở kỳ #01371 nên Power còn dừng ở 11/07/2026. Bản bổ sung dữ liệu này đóng gói 40 kỳ chính thức đã tải và kiểm chứng trước đó; không thay đổi mô hình hoặc giao diện và không khẳng định các lần tải nguồn tiếp theo sẽ thành công.
+
+- Snapshot baseline: SHA-256 `298e615992357f7f61a498d2ccc5a81cbd562d9577a9ba8eafdbb7eea54186f7`, 1.370 kỳ và 6.850 dòng giải. Với 100 kỳ khởi tạo, đánh giá cũ có 1.270 kỳ.
+- Snapshot triển khai: SHA-256 `e14280a7e529091025aeacb3bb539f581f3af1781079354efa8a94d1f3a47140`, 1.410 kỳ và 7.050 dòng giải, thêm đúng #01371–#01410. Mọi trường của 1.370 kỳ và 6.850 dòng giải cũ được giữ nguyên; kiểm tra SQLite integrity và foreign key đều đạt. 40 kỳ bổ sung được đối chiếu lại nội dung, giải thưởng và SHA-256 phản hồi trong manifest nguồn chính thức đã lưu. Kỳ #01399 có bóng chính `06 11 25 27 37 45`, bóng đặc biệt `15`.
+- Bổ sung 40 kỳ là đánh giá lịch sử riêng đã nêu bên dưới, không phải dự báo tiến cứu. Chạy trên DB triển khai với 100 kỳ khởi tạo sẽ có 1.310 kỳ đánh giá; không so trực tiếp số tổng này với kết quả 1.270 kỳ rồi gọi đó là cải thiện độ chính xác.
+
+Tái lập đánh giá Power baseline và kiểm tra nhật ký với DB triển khai:
+
+```bash
+python analysis/prediction_backtest.py --power-only --power-database analysis/fixtures/power655-snapshot-2026-07-11.sqlite3 --minimum-training-draws 100
+python analysis/prediction_backtest.py --power-only --power-database data/vietlott_power655.sqlite3 --minimum-training-draws 100
+python analysis/source_audit.py --power-db data/vietlott_power655.sqlite3 --ledger data/prediction_history.json --output work/source-audit-ledger.json
 ```
 
 ## Vì sao điểm dự đoán cũ chưa đáng tin
@@ -97,4 +113,4 @@ Sau chỉnh CSS cuối, ba bài kiểm thử điều hướng trọng tâm đạ
 
 ## Trạng thái bàn giao
 
-Mã và tài liệu sửa ở checkout local, có patch áp dụng lên commit gốc. Chưa commit, push, tạo PR hoặc deploy website. Chưa xác nhận dữ liệu XSMN mới cho toàn bộ 21 đài; nguồn phụ Power bị chặn. Không có tuyên bố bảo đảm trúng hoặc nâng độ chính xác đã chứng minh.
+Ở mốc bàn giao local ban đầu, mã và tài liệu có patch áp dụng lên commit gốc, chưa commit/push/deploy. Sau đó bản code `5adde5b` đã được push lên GitHub và triển khai lại website Streamlit; giao diện sản xuất, điều hướng và giữ bộ lọc đã được kiểm tra. Tại thời điểm soạn bản bổ sung dữ liệu này, snapshot Power 1.410 kỳ đang chờ review và triển khai lần hai. Chưa xác nhận toàn bộ lịch sử XSMN cho cả 21 đài; nguồn phụ Power bị chặn và lần tải tiếp theo từ Vietlott vẫn có thể gặp HTTP 403. Không có tuyên bố bảo đảm trúng hoặc nâng độ chính xác đã chứng minh.
