@@ -3,6 +3,7 @@ from datetime import date
 from pathlib import Path
 
 import bcrypt
+import pytest
 from helpers import make_draw
 from streamlit.testing.v1 import AppTest
 from test_power655 import make_power_draw
@@ -335,3 +336,84 @@ def test_power_reference_odds_use_vietnamese_number_format(tmp_path, monkeypatch
     assert probabilities['Tỷ lệ 1 trên'].iloc[0] == '28.989.675'
     assert probabilities['Tỷ lệ 1 trên'].iloc[1] == '4.831.612,5'
     assert app.slider(key='_power655_recent_window').label == 'Số kỳ gần đây để thống kê tần suất Power 6/55'
+
+
+def test_manual_power_recovery_replaces_cached_failure_without_rechecking_xsmn(tmp_path, monkeypatch):
+    from startup_sync import StartupSyncReport
+    from vietlott_power655.ingestion import IngestionReport as PowerReport
+    from xsmn.ingestion import IngestionReport as XSMNReport
+
+    calls = []
+
+    def failed_startup(*args):
+        calls.append('startup')
+        return StartupSyncReport(
+            XSMNReport(1, 0, ((date(2026, 10, 14), 'xsmn unavailable'),)),
+            PowerReport(0, 0, 'old Power HTTP403', status='unavailable'),
+        )
+
+    def recovered(*args, **kwargs):
+        calls.append('manual')
+        return PowerReport(0, 0, sources=('https://cvwork.vn/ket-qua-xo-so/vietlott/power-655',), status='degraded')
+
+    app = navigation_app(tmp_path, monkeypatch)
+    monkeypatch.setenv('LOTTERY_AUTO_SYNC_ENABLED', '1')
+    monkeypatch.setattr('startup_sync.sync_all_missing', failed_startup)
+    monkeypatch.setattr('vietlott_power655.ingestion.ingest_latest', recovered)
+    app.run()
+    assert any('old Power HTTP403' in item.value for item in app.markdown)
+    app.radio(key='_active_game').set_value('Vietlott Power 6/55').run()
+    next(item for item in app.button if item.label == 'Cập nhật Power 6/55').click().run()
+    assert not app.exception
+    assert calls == ['startup', 'manual']
+    warnings = ' '.join(item.value for item in app.warning)
+    assert 'old Power HTTP403' not in warnings
+    assert '1 ngày chưa cập nhật được' in warnings
+    assert any('đã dùng nguồn dự phòng' in item.value for item in app.success)
+    assert any('cvwork.vn' in item.value for item in app.caption)
+
+
+@pytest.mark.parametrize('known_conflict', [False, True])
+def test_recent_manual_check_does_not_hide_older_pending_power_issue(tmp_path, monkeypatch, known_conflict):
+    from startup_sync import StartupSyncReport
+    from vietlott_power655.ingestion import IngestionReport as PowerReport
+    from vietlott_power655.scraper import FetchBatch
+    from xsmn.ingestion import IngestionReport as XSMNReport
+
+    app = navigation_app(tmp_path, monkeypatch)
+    power_path = tmp_path / 'navigation-power.sqlite3'
+    repo = PowerRepository(power_path)
+    latest = replace(make_power_draw('01410'), draw_date=date(2026, 10, 13))
+    repo.upsert_draw(latest)
+    if known_conflict:
+        repo.upsert_draw(replace(make_power_draw('01399'), draw_date=date(2026, 9, 17)))
+    monkeypatch.setenv('LOTTERY_AUTO_SYNC_ENABLED', '1')
+    monkeypatch.setattr(
+        'startup_sync.sync_all_missing',
+        lambda *args: StartupSyncReport(
+            XSMNReport(0, 0, ()),
+            PowerReport(
+                1,
+                0,
+                'old issue 01399',
+                missing_draw_ids=('01399',),
+                conflict_draw_ids=('01399',) if known_conflict else (),
+                status='conflict' if known_conflict else 'partial',
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        'vietlott_power655.scraper.VietlottPower655Client.fetch_recent_batch',
+        lambda *args: FetchBatch((latest,), (), latest_draw_id='01410'),
+    )
+    app.run()
+    app.radio(key='_active_game').set_value('Vietlott Power 6/55').run()
+    next(item for item in app.button if item.label == 'Cập nhật Power 6/55').click().run()
+    assert not app.exception
+    assert any('Power 6/55' in item.value for item in app.warning)
+    assert any('01399' in item.value for item in app.markdown)
+    assert not any('đã kiểm tra nguồn chính' in item.value for item in app.success)
+    if known_conflict:
+        assert app.session_state['power_sync_report_override'][1].conflict_draw_ids == ('01399',)
+    else:
+        assert repo.get_draw('01399') is None

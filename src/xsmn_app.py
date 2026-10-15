@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+import time
+from datetime import date, datetime, timedelta
 from html import escape
 from pathlib import Path
+from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -28,6 +31,7 @@ from vietlott_power655.calendar import next_draw_date as power655_next_draw_date
 from vietlott_power655.config import DRAW_WEEKDAYS as POWER655_DRAW_WEEKDAYS
 from vietlott_power655.ingestion import ingest_all as ingest_power655_all
 from vietlott_power655.ingestion import ingest_latest as ingest_power655_latest
+from vietlott_power655.ingestion import reconcile_sync_status
 from vietlott_power655.prediction import MODEL_VERSION as POWER655_MODEL_VERSION
 from vietlott_power655.prediction import rank_number_candidates
 from vietlott_power655.prize_checker import check_ticket as check_power655_ticket
@@ -129,6 +133,37 @@ def load_power655_draws(path: str, modified_ns: int) -> pd.DataFrame:
 @st.cache_data(ttl=AUTO_SYNC_TTL_SECONDS, show_spinner=False)
 def run_startup_sync(xsmn_path: str, power655_path: str, bootstrap_days: int) -> StartupSyncReport:
     return sync_all_missing(xsmn_path, power655_path, bootstrap_days)
+
+
+def render_power_sync_status(report, latest_date: date | None) -> None:
+    latest_label = latest_date.strftime('%d-%m-%Y') if latest_date else 'chưa có dữ liệu'
+    sources = getattr(report, 'sources', ())
+    providers = sorted({urlsplit(source).hostname or source for source in sources})
+    backup = any(provider != 'vietlott.vn' for provider in providers)
+    pending = getattr(report, 'missing_draw_ids', ())
+    if report.failed_message:
+        pending_label = f'còn {len(pending)} kỳ cần kiểm tra' if pending else 'chưa xác minh đầy đủ kết quả mới nhất'
+        st.warning(f'Power 6/55: dữ liệu đến {latest_label}; {pending_label}. Xem chi tiết nguồn bên dưới.')
+    else:
+        source_label = 'đã dùng nguồn dự phòng' if backup else 'đã kiểm tra nguồn chính'
+        st.success(f'Đã lưu {report.stored_draws} kỳ Power 6/55. Dữ liệu đến {latest_label}; {source_label}.')
+        if getattr(report, 'status', '') == 'degraded':
+            st.caption('Một phần nguồn chưa phản hồi đầy đủ; kết quả hợp lệ đã được giữ lại.')
+    if providers:
+        st.caption('Nguồn Power: ' + ', '.join(providers))
+    if getattr(report, 'checked_at', None):
+        st.caption('Kiểm tra Power: ' + datetime.fromtimestamp(report.checked_at, ZoneInfo('Asia/Ho_Chi_Minh')).isoformat(timespec='seconds'))
+    errors = getattr(report, 'source_errors', ())
+    if report.failed_message or errors or sources:
+        with st.expander('Chi tiết nguồn và kỳ Power còn thiếu'):
+            for source in sources:
+                st.caption(source)
+            if report.failed_message:
+                st.write(report.failed_message)
+            for error in errors:
+                st.caption(error)
+            if pending:
+                st.write('Kỳ cần kiểm tra: ' + ', '.join(pending))
 
 
 def database_modified_ns(path: Path) -> int:
@@ -727,18 +762,28 @@ with page_content.container():
 
     with st.sidebar:
         st.header('Dữ liệu')
+        manual_power_status = st.session_state.get('power_sync_report_override')
+        power_sync = startup_sync_report.power655 if startup_sync_report is not None else None
+        if (
+            manual_power_status
+            and time.time() - manual_power_status[0] < AUTO_SYNC_TTL_SECONDS
+            and (power_sync is None or manual_power_status[0] >= getattr(power_sync, 'checked_at', 0))
+        ):
+            power_sync = manual_power_status[1]
         if startup_sync_report is not None:
             xsmn_sync = startup_sync_report.xsmn
-            power_sync = startup_sync_report.power655
-            if not xsmn_sync.failed_dates and not power_sync.failed_message:
-                st.success(
-                    f'Lần kiểm tra gần nhất: XSMN +{xsmn_sync.stored_draws} kỳ đài, Power 6/55 +{power_sync.stored_draws} kỳ.'
-                )
+            if xsmn_sync.failed_dates:
+                st.warning(f'XSMN: {len(xsmn_sync.failed_dates)} ngày chưa cập nhật được.')
             else:
-                st.warning(
-                    f'Đồng bộ chưa hoàn tất: {len(xsmn_sync.failed_dates)} ngày XSMN lỗi; '
-                    f'Power 6/55: {power_sync.failed_message or "không lỗi"}.'
-                )
+                st.caption(f'Kiểm tra XSMN: đã lưu thêm {xsmn_sync.stored_draws} kỳ đài.')
+        if power_sync is not None:
+            power_sync = reconcile_sync_status(st.session_state.get('power_sync_issue_report'), power_sync)
+            st.session_state['power_sync_issue_report'] = (
+                power_sync
+                if getattr(power_sync, 'missing_draw_ids', ()) or getattr(power_sync, 'conflict_draw_ids', ())
+                else None
+            )
+            render_power_sync_status(power_sync, power655_repository.date_bounds()[1])
         if game_key == 'xsmn':
             with st.expander('Cập nhật dữ liệu XSMN'):
                 update_days = st.number_input('Số ngày cần cập nhật', min_value=1, max_value=10_000, value=30, step=1)
@@ -783,21 +828,16 @@ with page_content.container():
                             include_details=True,
                         )
                     load_power655_draws.clear()
-                    if report.failed_message:
-                        st.error(report.failed_message)
-                    else:
-                        st.success(f'Đã lưu {report.stored_draws} kỳ Power 6/55.')
+                    report = reconcile_sync_status(power_sync, report)
+                    st.session_state['power_sync_report_override'] = (time.time(), report)
+                    st.rerun()
                 if st.button('Tải toàn bộ lịch sử Power 6/55', width='stretch'):
                     with st.spinner('Đang tải toàn bộ lịch sử từ kỳ đầu tiên; quá trình này có thể mất vài phút...'):
                         report = ingest_power655_all(power655_repository, VietlottPower655Client())
                     load_power655_draws.clear()
-                    if report.failed_message:
-                        st.error(report.failed_message)
-                    else:
-                        st.success(
-                            f'Đã lưu {report.stored_draws} kỳ, từ #{report.first_draw_id} đến #{report.last_draw_id}; '
-                            f'thiếu {len(report.missing_draw_ids)} ID kỳ.'
-                        )
+                    report = reconcile_sync_status(power_sync, report)
+                    st.session_state['power_sync_report_override'] = (time.time(), report)
+                    st.rerun()
 
     results = load_results(str(DATABASE_PATH), database_modified_ns(DATABASE_PATH))
     power655_draws = load_power655_draws(str(POWER655_DATABASE_PATH), database_modified_ns(POWER655_DATABASE_PATH))

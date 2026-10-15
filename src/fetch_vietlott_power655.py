@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
-from vietlott_power655.ingestion import ingest_all, ingest_latest
+from vietlott_power655.ingestion import ingest_all, ingest_latest, sync_missing_results
 from vietlott_power655.repository import SQLiteRepository
 from vietlott_power655.scraper import VietlottPower655Client
 
@@ -13,6 +15,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Tải kết quả Vietlott Power 6/55 vào SQLite')
     parser.add_argument('--database', type=Path, default=Path('data/vietlott_power655.sqlite3'))
     parser.add_argument('--limit', type=int, default=8, help='Số kỳ gần nhất cần tải')
+    parser.add_argument(
+        '--sync-missing', action='store_true', help='Đồng bộ tăng dần có ngân sách tải và lưu phần hợp lệ'
+    )
     parser.add_argument('--all', action='store_true', help='Tải toàn bộ lịch sử từ kỳ đầu tiên')
     parser.add_argument('--request-delay', type=float, default=0.05, help='Số giây nghỉ giữa hai trang lịch sử')
     parser.add_argument('--skip-details', action='store_true', help='Không tải bảng giải chi tiết cho các kỳ gần nhất')
@@ -25,7 +30,11 @@ def main() -> int:
     args = build_parser().parse_args()
     repository = SQLiteRepository(args.database)
     client = VietlottPower655Client()
-    if args.all:
+    if args.sync_missing and args.all:
+        build_parser().error('--sync-missing không dùng cùng --all')
+    if args.sync_missing:
+        report = sync_missing_results(repository, client)
+    elif args.all:
         print('Đang tải toàn bộ lịch sử Power 6/55 từ Vietlott...')
         report = ingest_all(repository, client, request_delay_seconds=max(args.request_delay, 0))
     else:
@@ -35,6 +44,7 @@ def main() -> int:
             limit=max(args.limit, 1),
             include_details=not args.skip_details,
         )
+    print(json.dumps(asdict(report), ensure_ascii=False))
     if report.failed_message:
         print(f'Chưa tải được Power 6/55: {report.failed_message}')
         return 1

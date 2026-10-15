@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
-from typing import Iterable
 
 import pandas as pd
 
 from .config import PRIZE_DISPLAY_ORDER, PRIZE_SPECS
 from .models import Power655Draw, PrizeTierResult
+
+
+class OutcomeConflictError(ValueError):
+    """A published draw is immutable; corrections require an explicit reviewed flow."""
 
 
 class SQLiteRepository:
@@ -56,6 +60,7 @@ class SQLiteRepository:
         batch = tuple(draws)
         self.initialize()
         with closing(self._connect()) as connection, connection:
+            connection.execute('BEGIN IMMEDIATE')
             for draw in batch:
                 self._write_draw(connection, draw)
         return len(batch)
@@ -64,45 +69,73 @@ class SQLiteRepository:
         self.upsert_draws((draw,))
 
     def _write_draw(self, connection: sqlite3.Connection, draw: Power655Draw) -> None:
-        fetched_at = draw.fetched_at.isoformat() if draw.fetched_at else None
-        existing = connection.execute('SELECT id FROM power655_draws WHERE draw_id = ?', (draw.draw_id,)).fetchone()
-        connection.execute(
-            """
-            INSERT INTO power655_draws (
-                draw_id, draw_date, main_numbers, bonus_number, source_url, fetched_at, parser_version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(draw_id) DO UPDATE SET
-                draw_date = excluded.draw_date,
-                main_numbers = excluded.main_numbers,
-                bonus_number = excluded.bonus_number,
-                source_url = excluded.source_url,
-                fetched_at = excluded.fetched_at,
-                parser_version = excluded.parser_version,
-                revision = power655_draws.revision + 1
-            """,
+        existing = connection.execute('SELECT * FROM power655_draws WHERE draw_id = ?', (draw.draw_id,)).fetchone()
+        same_date = connection.execute(
+            'SELECT draw_id FROM power655_draws WHERE draw_date = ? AND draw_id != ?',
+            (draw.draw_date.isoformat(), draw.draw_id),
+        ).fetchone()
+        if same_date:
+            raise OutcomeConflictError(
+                f'Ngày {draw.draw_date} đã thuộc kỳ {same_date["draw_id"]}, không phải {draw.draw_id}'
+            )
+        # IDs are chronological; reject wrong-date observations even when the date is unused.
+        neighbors = connection.execute(
+            'SELECT draw_id,draw_date FROM power655_draws WHERE '
+            'draw_id=(SELECT MAX(draw_id) FROM power655_draws WHERE draw_id < ?) OR '
+            'draw_id=(SELECT MIN(draw_id) FROM power655_draws WHERE draw_id > ?)',
+            (draw.draw_id, draw.draw_id),
+        ).fetchall()
+        if any(
+            (row['draw_id'] < draw.draw_id and row['draw_date'] >= draw.draw_date.isoformat())
+            or (row['draw_id'] > draw.draw_id and row['draw_date'] <= draw.draw_date.isoformat())
+            for row in neighbors
+        ):
+            raise OutcomeConflictError(f'Kỳ {draw.draw_id}: ngày quay không theo thứ tự ID đã lưu')
+        if existing is not None:
+            if (existing['draw_date'], existing['main_numbers'], existing['bonus_number']) != (
+                draw.draw_date.isoformat(),
+                ' '.join(draw.main_numbers),
+                draw.bonus_number,
+            ):
+                raise OutcomeConflictError(f'Kỳ {draw.draw_id}: kết quả mâu thuẫn với dữ liệu đã lưu')
+            rows = {
+                row['tier_code']: row
+                for row in connection.execute(
+                    'SELECT * FROM power655_prizes WHERE draw_pk = ?',
+                    (existing['id'],),
+                )
+            }
+            for prize in draw.prizes:
+                row = rows[prize.tier_code]
+                for field in ('winner_count', 'payout_vnd'):
+                    known, incoming = row[field], getattr(prize, field)
+                    if known is not None and incoming is not None and known != incoming:
+                        raise OutcomeConflictError(f'Kỳ {draw.draw_id}: thông tin giải {prize.tier_code} mâu thuẫn')
+                # Enrich unknown fields, but never replace an established fact with None/defaults.
+                connection.execute(
+                    'UPDATE power655_prizes SET winner_count=COALESCE(winner_count, ?), '
+                    'payout_vnd=COALESCE(payout_vnd, ?) WHERE id=?',
+                    (prize.winner_count, prize.payout_vnd, row['id']),
+                )
+            return
+        cursor = connection.execute(
+            'INSERT INTO power655_draws '
+            '(draw_id, draw_date, main_numbers, bonus_number, source_url, fetched_at, parser_version) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?)',
             (
                 draw.draw_id,
                 draw.draw_date.isoformat(),
                 ' '.join(draw.main_numbers),
                 draw.bonus_number,
                 draw.source_url,
-                fetched_at,
+                draw.fetched_at.isoformat() if draw.fetched_at else None,
                 draw.parser_version,
             ),
         )
-        draw_pk = connection.execute('SELECT id FROM power655_draws WHERE draw_id = ?', (draw.draw_id,)).fetchone()[
-            'id'
-        ]
-        incoming_has_details = any(prize.winner_count is not None for prize in draw.prizes)
-        if existing is None or incoming_has_details:
-            connection.execute('DELETE FROM power655_prizes WHERE draw_pk = ?', (draw_pk,))
-            connection.executemany(
-                """
-                INSERT INTO power655_prizes (draw_pk, tier_code, winner_count, payout_vnd)
-                VALUES (?, ?, ?, ?)
-                """,
-                [(draw_pk, prize.tier_code, prize.winner_count, prize.payout_vnd) for prize in draw.prizes],
-            )
+        connection.executemany(
+            'INSERT INTO power655_prizes (draw_pk,tier_code,winner_count,payout_vnd) VALUES (?,?,?,?)',
+            [(cursor.lastrowid, p.tier_code, p.winner_count, p.payout_vnd) for p in draw.prizes],
+        )
 
     def get_draw(self, draw_id: str) -> Power655Draw | None:
         self.initialize()

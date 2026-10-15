@@ -1,5 +1,9 @@
 name: Update data
 
+concurrency:
+  group: lottery-data-main
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -31,9 +35,10 @@ jobs:
         continue-on-error: true
         run: uv run src/fetch_xsmn.py --days 60 --workers 12
 
-      - name: Fetch recent Power 6/55 results
+      - name: Sync missing Power 6/55 results (bounded, partial writes retained)
+        id: power-sync
         continue-on-error: true
-        run: uv run src/fetch_vietlott_power655.py --limit 20 --skip-details
+        run: uv run src/fetch_vietlott_power655.py --sync-missing
 
       - name: Save and evaluate predictions
         run: uv run src/update_prediction_history.py
@@ -44,6 +49,7 @@ jobs:
       - name: Commit changes
         run: |
           git add data/*.csv data/*.json data/*.parquet
+          git add data/vietlott_power655.sqlite3
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
@@ -53,3 +59,9 @@ jobs:
           git config --global user.name "GitHub Action"
           git commit -m "Update lottery data and prediction history $(date +'%Y-%m-%d')"
           git push origin main
+
+      - name: Fail visibly when Power source sync is incomplete
+        if: always() && steps.power-sync.outcome == 'failure'
+        run: |
+          echo "Power source sync was incomplete. Validated partial data was retained; inspect its structured report."
+          exit 1

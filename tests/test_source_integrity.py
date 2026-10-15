@@ -56,7 +56,20 @@ def test_power_deduplicates_exact_draws_but_rejects_conflicts() -> None:
         _unique_draws([draw, replace(draw, bonus_number='08')])
 
 
-def test_power_small_gap_does_not_download_whole_archive() -> None:
+def test_power_small_gap_does_not_download_whole_archive(monkeypatch) -> None:
+    from datetime import date, timedelta
+
+    dates = []
+    cursor = date(2026, 7, 14)
+    while len(dates) < 40:
+        if cursor.weekday() in (1, 3, 5):
+            dates.append(cursor)
+        cursor += timedelta(days=1)
+    monkeypatch.setattr('vietlott_power655.ingestion.latest_available_date', lambda: dates[-1])
+
+    def draw_for(draw_id):
+        return replace(power_draw(), draw_id=draw_id, draw_date=dates[int(draw_id) - 1371])
+
     class Repository:
         def draw_ids(self):
             return {f'{i:05d}' for i in range(1, 1371)}
@@ -70,11 +83,11 @@ def test_power_small_gap_does_not_download_whole_archive() -> None:
             self.detail_ids = []
 
         def fetch_history(self):
-            return [replace(power_draw(), draw_id=f'{i:05d}') for i in range(1410, 1402, -1)]
+            return [draw_for(f'{i:05d}') for i in range(1410, 1402, -1)]
 
         def fetch_detail(self, draw_id):
             self.detail_ids.append(draw_id)
-            return replace(power_draw(), draw_id=draw_id)
+            return draw_for(draw_id)
 
         def fetch_all_draws(self):
             raise AssertionError('Do not reload 1,410 draws for a 40-draw gap')

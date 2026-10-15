@@ -1,0 +1,79 @@
+[
+  {
+    "fixture": "cvwork-01410.html",
+    "fixture_sha256": "4f4e935671a16d29b03b2732af60d0d1c62ad2292972f5411111e54a33ee1a4e",
+    "source_url": "https://cvwork.vn/ket-qua-xo-so/vietlott/power-655",
+    "observed_at_utc": "2026-10-15T09:32:32.845036+00:00",
+    "http_status": "200",
+    "effective_url": "https://cvwork.vn/ket-qua-xo-so/vietlott/power-655",
+    "original_response_sha256": "98138962f559b163dbbf45682bc5e2a435ea9a1ab1e0ccb8059d066ba090e322",
+    "original_response_bytes": 93051,
+    "extraction": "Public result markup only; official history keeps two rows, three selector options and the published draw-selector key. Unrelated page scripts, trackers and network-policy pages are excluded."
+  },
+  {
+    "fixture": "cvwork-01371-redirect.html",
+    "fixture_sha256": "4f4e935671a16d29b03b2732af60d0d1c62ad2292972f5411111e54a33ee1a4e",
+    "source_url": "https://cvwork.vn/ket-qua-xo-so/vietlott/power-655/01371",
+    "observed_at_utc": "2026-10-15T09:34:43.387337+00:00",
+    "http_status": "200",
+    "effective_url": "https://cvwork.vn/ket-qua-xo-so/vietlott/power-655",
+    "original_response_sha256": "98138962f559b163dbbf45682bc5e2a435ea9a1ab1e0ccb8059d066ba090e322",
+    "original_response_bytes": 93051,
+    "extraction": "Public result markup only; official history keeps two rows, three selector options and the published draw-selector key. Unrelated page scripts, trackers and network-policy pages are excluded."
+  },
+  {
+    "fixture": "cvwork-latest.html",
+    "fixture_sha256": "011695b0c1533d24f56cbcaa297c3b6863c20abfbfd85b2bb1aad55d9a414105",
+    "source_url": "https://cvwork.vn/ket-qua-xo-so/vietlott/power-655",
+    "observed_at_utc": "2026-10-15T09:32:32.845036+00:00",
+    "http_status": "200",
+    "effective_url": "https://cvwork.vn/ket-qua-xo-so/vietlott/power-655",
+    "original_response_sha256": "98138962f559b163dbbf45682bc5e2a435ea9a1ab1e0ccb8059d066ba090e322",
+    "original_response_bytes": 93051,
+    "extraction": "Public result markup only; official history keeps two rows, three selector options and the published draw-selector key. Unrelated page scripts, trackers and network-policy pages are excluded."
+  },
+  {
+    "fixture": "xsmm-01410.html",
+    "fixture_sha256": "9c7a2c99316f72d25586b3648db0413cbe82aeaa7d8825ad9b3fa6552fc58049",
+    "source_url": "https://xsmm.vn/xo-so-vietlott-power-655/13-10-2026",
+    "observed_at_utc": "2026-10-15T09:32:32.851851+00:00",
+    "http_status": "200",
+    "effective_url": "https://xsmm.vn/xo-so-vietlott-power-655/13-10-2026",
+    "original_response_sha256": "099b27664090e96c2d9b8fcd554dbb73b0f9d1f1e4c4b5c5531376d45768dc98",
+    "original_response_bytes": 271822,
+    "extraction": "Public result markup only; official history keeps two rows, three selector options and the published draw-selector key. Unrelated page scripts, trackers and network-policy pages are excluded."
+  },
+  {
+    "fixture": "xsmm-01371.html",
+    "fixture_sha256": "ed5b8eb33cda3126244f558e1d4d03dada50d72e8256192bbea4441c0550b77c",
+    "source_url": "https://xsmm.vn/xo-so-vietlott-power-655/ky-01371",
+    "observed_at_utc": "2026-10-15T09:34:44.087243+00:00",
+    "http_status": "200",
+    "effective_url": "https://xsmm.vn/xo-so-vietlott-power-655/ky-01371",
+    "original_response_sha256": "b17f6f6ded1508aed072eeffd367430477719cf598d502403ba28d8dae789c44",
+    "original_response_bytes": 251481,
+    "extraction": "Public result markup only; official history keeps two rows, three selector options and the published draw-selector key. Unrelated page scripts, trackers and network-policy pages are excluded."
+  },
+  {
+    "fixture": "xsmm-latest.html",
+    "fixture_sha256": "41f227283881d4f9c6d3315d03fe92c9a02f234f7506d54c4d42769c3b8cc48c",
+    "source_url": "https://xsmm.vn/xo-so-vietlott-power-655",
+    "observed_at_utc": "2026-10-15T09:34:43.390944+00:00",
+    "http_status": "200",
+    "effective_url": "https://xsmm.vn/xo-so-vietlott-power-655",
+    "original_response_sha256": "97edead3588121f2076717f5afe9e1f5b9db0cc2125719f384b3c8bbf389e29e",
+    "original_response_bytes": 321173,
+    "extraction": "Public result markup only; official history keeps two rows, three selector options and the published draw-selector key. Unrelated page scripts, trackers and network-policy pages are excluded."
+  },
+  {
+    "fixture": "official-history.html",
+    "fixture_sha256": "f239cbd24cd2a521485ae1270a5bdff97ada952398df829f182c1188ff396ef6",
+    "source_url": "https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/winning-number-655",
+    "observed_at_utc": "2026-10-15T09:30:10.390879+00:00",
+    "http_status": "200",
+    "effective_url": "https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/winning-number-655",
+    "original_response_sha256": "d8bb9e2fb6643973b5bbb33534fa8bc79a6fb5bf265b9401ae4abc8ace768f52",
+    "original_response_bytes": 213651,
+    "extraction": "Public result markup only; official history keeps two rows, three selector options and the published draw-selector key. Unrelated page scripts, trackers and network-policy pages are excluded."
+  }
+]
